@@ -1,0 +1,47 @@
+# 工作流名称：自动同步上游Fork仓库
+name: Sync Upstream Fork
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # 每天凌晨3点运行（只在默认分支运行）
+  workflow_dispatch:     # 手动触发
+
+permissions:
+  contents: write
+
+env:
+  GIT_USERNAME: ${{ github.actor }}
+  GIT_EMAIL: ${{ github.actor }}@users.noreply.github.com
+
+jobs:
+  sync:
+    # 条件判断：只在 main 分支运行
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main branch only
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+          token: ${{ secrets.DEPLOY_TOKEN  }}
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "$GIT_USERNAME"
+          git config --global user.email "$GIT_EMAIL"
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/ZhuLinsen/daily_stock_analysis
+
+      - name: Fetch upstream all
+        run: git fetch upstream
+
+      - name: Rebase with upstream main
+        run: git merge upstream/main
+
+      - name: Push to fork main branch
+        run: |
+          git remote set-url origin https://${{ secrets.DEPLOY_TOKEN }}@github.com/AlwaysFyo/daily_stock_analysis
+          git push origin main --force-with-lease
