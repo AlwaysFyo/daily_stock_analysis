@@ -1,26 +1,40 @@
-name: Sync upstream
- 
+name: 上游同步
+
+permissions:
+  contents: write
+  actions: write
+
 on:
   schedule:
-    - cron: '0 0 * * *'  # 每天UTC时间0点执行
- 
+    - cron: "0 0 * * *" # 每天执行
+  workflow_dispatch:
+
 jobs:
-  sync:
+  sync_latest_from_upstream:
+    name: 从上游仓库同步最新提交
     runs-on: ubuntu-latest
+    if: ${{ github.event.repository.fork }}
+
     steps:
-      - uses: actions/checkout@v2
+      # 步骤 1: 运行标准的 checkout 操作
+      - name: 检出目标仓库
+        uses: actions/checkout@v4
+
+      # 步骤 2: 运行同步操作
+      - name: 同步上游更改
+        id: sync
+        uses: aormsby/Fork-Sync-With-Upstream-action@v3.4
         with:
-          fetch-depth: 0
-          ref: main
-      - name: Configure git
+          upstream_sync_repo: ChatGPTNextWeb/ChatGPT-Next-Web
+          upstream_sync_branch: main
+          target_sync_branch: main
+          target_repo_token: ${{ secrets.GITHUB_TOKEN }} # 自动生成，无需设置
+
+          # 设置 test_mode 为 true 将运行测试而不是实际操作
+          test_mode: false
+
+      - name: 同步检查
+        if: failure()
         run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-      - name: Add upstream repo
-        run: git remote add upstream https://github.com/ZhuLinsen/daily_stock_analysis.git
-      - name: Fetch upstream
-        run: git fetch upstream
-      - name: Merge upstream
-        run: git merge upstream/main --allow-unrelated-histories
-      - name: Push changes
-        run: git push origin main
+          echo "[错误] 由于上游仓库的 workflow 文件变更，导致 GitHub 自动暂停了本次自动更新，你需要手动同步 Fork 一次"
+          exit 1
