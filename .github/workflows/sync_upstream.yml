@@ -1,4 +1,4 @@
-name: 上游同步
+name: Sync Fork  # 同步上游仓库
 
 permissions:
   contents: write
@@ -6,35 +6,36 @@ permissions:
 
 on:
   schedule:
-    - cron: "0 0 * * *" # 每天执行
-  workflow_dispatch:
+    - cron: "0 16 * * *" # 北京时间 0 点执行（UTC 16:00）
+  workflow_dispatch:  # 支持手动触发
 
 jobs:
   sync_latest_from_upstream:
-    name: 从上游仓库同步最新提交
+    name: Sync latest commits from upstream repo  # 同步上游最新提交
     runs-on: ubuntu-latest
-    if: ${{ github.event.repository.fork }}
+    if: ${{ github.event.repository.fork }}  # 仅在 Fork 仓库中执行
 
     steps:
-      # 步骤 1: 运行标准的 checkout 操作
-      - name: 检出目标仓库
+      # Step 1: run a standard checkout action
+      - name: Checkout target repo  # 检出目标仓库
         uses: actions/checkout@v4
 
-      # 步骤 2: 运行同步操作
-      - name: 同步上游更改
+      # Step 2: 执行同步操作
+      - name: Sync upstream changes  # 同步上游变更
         id: sync
         uses: aormsby/Fork-Sync-With-Upstream-action@v3.4
         with:
-          upstream_sync_repo: ChatGPTNextWeb/ChatGPT-Next-Web
-          upstream_sync_branch: main
-          target_sync_branch: main
+          upstream_sync_repo: ZhuLinsen/daily_stock_analysis  # 上游仓库
+          upstream_sync_branch: main  # 上游分支
+          target_sync_branch: main  # 目标分支
           target_repo_token: ${{ secrets.GITHUB_TOKEN }} # 自动生成，无需设置
 
-          # 设置 test_mode 为 true 将运行测试而不是实际操作
+          # 将 test_mode 设置为 true 以运行测试，而不是执行实际操作！！
           test_mode: false
 
-      - name: 同步检查
+      - name: Sync check  # 同步检查
         if: failure()
         run: |
-          echo "[错误] 由于上游仓库的 workflow 文件变更，导致 GitHub 自动暂停了本次自动更新，你需要手动同步 Fork 一次"
+          echo "[Error] 由于上游仓库的 workflow 文件变更，导致 GitHub 自动暂停了本次自动更新，你需要手动 Sync Fork 一次"
+          echo "[Error] Due to a change in the workflow file of the upstream repository, GitHub has automatically suspended the scheduled automatic update. You need to manually sync your fork."
           exit 1

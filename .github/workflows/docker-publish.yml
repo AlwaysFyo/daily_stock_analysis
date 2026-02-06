@@ -1,6 +1,6 @@
 name: Docker Publish
 
-on: []  # 添加空数组，禁用所有触发器
+on:   #[]  # 添加空数组，禁用所有触发器
   push:
     branches:
       - main
