@@ -297,7 +297,7 @@ def start_api_server(host: str, port: int, config: Config) -> None:
     def run_server():
         level_name = (config.log_level or "INFO").lower()
         uvicorn.run(
-            "api.app:app",
+            "src.api.app:app",
             host=host,
             port=port,
             log_level=level_name,

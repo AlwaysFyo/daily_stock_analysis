@@ -9,6 +9,10 @@
 test_*.py
 !test_env.py
 
+# WebUI
+static/
+media/
+
 # Python
 __pycache__/
 *.py[cod]

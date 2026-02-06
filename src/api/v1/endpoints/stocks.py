@@ -13,12 +13,12 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Query
 
-from api.v1.schemas.stocks import (
+from src.api.v1.schemas.stocks import (
     StockQuote,
     StockHistoryResponse,
     KLineData,
 )
-from api.v1.schemas.common import ErrorResponse
+from src.api.v1.schemas.common import ErrorResponse
 from src.services.stock_service import StockService
 
 logger = logging.getLogger(__name__)

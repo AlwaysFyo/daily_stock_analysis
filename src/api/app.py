@@ -25,9 +25,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
-from api.v1 import api_v1_router
-from api.middlewares.error_handler import add_error_handlers
-from api.v1.schemas.common import RootResponse, HealthResponse
+from src.api.v1 import api_v1_router
+from src.api.middlewares.error_handler import add_error_handlers
+from src.api.v1.schemas.common import RootResponse, HealthResponse
 
 
 def create_app(static_dir: Optional[Path] = None) -> FastAPI:

@@ -14,8 +14,8 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, Depends
 
-from api.deps import get_database_manager
-from api.v1.schemas.history import (
+from src.api.deps import get_database_manager
+from src.api.v1.schemas.history import (
     HistoryListResponse,
     HistoryItem,
     NewsIntelItem,
@@ -26,7 +26,7 @@ from api.v1.schemas.history import (
     ReportStrategy,
     ReportDetails,
 )
-from api.v1.schemas.common import ErrorResponse
+from src.api.v1.schemas.common import ErrorResponse
 from src.storage import DatabaseManager
 from src.services.history_service import HistoryService
 

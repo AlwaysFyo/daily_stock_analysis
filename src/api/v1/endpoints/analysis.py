@@ -25,8 +25,8 @@ from typing import Optional, Union, Dict, Any
 from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from api.deps import get_config_dep
-from api.v1.schemas.analysis import (
+from src.api.deps import get_config_dep
+from src.api.v1.schemas.analysis import (
     AnalyzeRequest,
     AnalysisResultResponse,
     TaskAccepted,
@@ -35,8 +35,8 @@ from api.v1.schemas.analysis import (
     TaskListResponse,
     DuplicateTaskErrorResponse,
 )
-from api.v1.schemas.common import ErrorResponse
-from api.v1.schemas.history import (
+from src.api.v1.schemas.common import ErrorResponse
+from src.api.v1.schemas.history import (
     AnalysisReport,
     ReportMeta,
     ReportSummary,
