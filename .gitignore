@@ -39,6 +39,7 @@ env/
 .venv/
 
 # IDE
+.trae/
 .idea/
 .vscode/
 *.swp
