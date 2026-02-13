@@ -248,9 +248,9 @@ python main.py --market-only
 ## 💬 还有问题？
 
 如果以上内容没有解决你的问题，欢迎：
-1. 查看 [完整配置指南](full-guide.md)
+1. 查看 [完整配置指南](../guides/full-guide.md)
 2. 搜索或提交 [GitHub Issue](https://github.com/ZhuLinsen/daily_stock_analysis/issues)
-3. 查看 [更新日志](CHANGELOG.md) 了解最新修复
+3. 查看 [更新日志](../CHANGELOG.md) 了解最新修复
 
 ---
 

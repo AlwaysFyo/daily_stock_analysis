@@ -11,16 +11,16 @@
 
 > 🤖 基于 AI 大模型的 A股/港股/美股自选股智能分析系统，每日自动分析并推送「决策仪表盘」到企业微信/飞书/Telegram/邮箱
 
-[**功能特性**](#-功能特性) · [**快速开始**](#-快速开始) · [**推送效果**](#-推送效果) · [**完整指南**](docs/full-guide.md) · [**常见问题**](docs/FAQ.md) · [**更新日志**](docs/CHANGELOG.md)
+[**功能特性**](#-功能特性) · [**快速开始**](#-快速开始) · [**推送效果**](#-推送效果) · [**完整指南**](docs/guides/full-guide.md) · [**常见问题**](docs/user/FAQ.md) · [**更新日志**](docs/CHANGELOG.md)
 
-简体中文 | [English](docs/README_EN.md) | [繁體中文](docs/README_CHT.md)
+简体中文 | [English](docs/user/README_EN.md) | [繁體中文](docs/user/README_CHT.md)
 
 </div>
 
 ## 💖 赞助商 (Sponsors)
 <div align="center">
   <a href="https://serpapi.com/baidu-search-api?utm_source=github_daily_stock_analysis" target="_blank">
-    <img src="./sources/serpapi_banner_zh.png" alt="轻松抓取搜索引擎上的实时金融新闻数据 - SerpApi" height="160">
+    <img src="./docs/images/serpapi_banner_zh.png" alt="轻松抓取搜索引擎上的实时金融新闻数据 - SerpApi" height="160">
   </a>
 </div>
 <br>
@@ -104,7 +104,7 @@
 | `REPORT_TYPE` | 报告类型：`simple`(精简) 或 `full`(完整)，Docker环境推荐设为 `full` | 可选 |
 | `ANALYSIS_DELAY` | 个股分析和大盘分析之间的延迟（秒），避免API限流，如 `10` | 可选 |
 
-> 至少配置一个渠道，配置多个则同时推送。更多配置请参考 [完整指南](docs/full-guide.md)
+> 至少配置一个渠道，配置多个则同时推送。更多配置请参考 [完整指南](docs/guides/full-guide.md)
 
 </details>
 
@@ -148,7 +148,7 @@ cp .env.example .env && vim .env
 python main.py
 ```
 
-> Docker 部署、定时任务配置请参考 [完整指南](docs/full-guide.md)
+> Docker 部署、定时任务配置请参考 [完整指南](docs/guides/full-guide.md)
 
 ## 📱 推送效果
 
@@ -200,12 +200,12 @@ python main.py
 ```
 ## ⚙️ 配置说明
 
-> 📖 完整环境变量、定时任务配置请参考 [完整配置指南](docs/full-guide.md)
+> 📖 完整环境变量、定时任务配置请参考 [完整配置指南](docs/guides/full-guide.md)
 
 
 ## 🖥️ Web 界面
 
-![img.png](sources/fastapi_server.png)
+![img.png](docs/images/fastapi_server.png)
 
 包含完整的配置管理、任务监控和手动分析功能。
 
@@ -244,7 +244,7 @@ python main.py
 
 | 支付宝 (Alipay) | 微信支付 (WeChat) | Ko-fi |
 | :---: | :---: | :---: |
-| <img src="./sources/alipay.jpg" width="200" alt="Alipay"> | <img src="./sources/wechatpay.jpg" width="200" alt="WeChat Pay"> | <a href="https://ko-fi.com/mumu157" target="_blank"><img src="./sources/ko-fi.png" width="200" alt="Ko-fi"></a> |
+| <img src="./docs/images/alipay.jpg" width="200" alt="Alipay"> | <img src="./docs/images/wechatpay.jpg" width="200" alt="WeChat Pay"> | <a href="https://ko-fi.com/mumu157" target="_blank"><img src="./docs/images/ko-fi.png" width="200" alt="Ko-fi"></a> |
 
 ---
 

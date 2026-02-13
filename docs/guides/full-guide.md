@@ -2,7 +2,7 @@
 
 本文档包含 A股智能分析系统的完整配置说明，适合需要高级功能或特殊部署方式的用户。
 
-> 💡 快速上手请参考 [README.md](../README.md)，本文档为进阶配置。
+> 💡 快速上手请参考 [README.md](../../README.md)，本文档为进阶配置。
 
 ## � 项目结构
 
@@ -50,7 +50,7 @@ daily_stock_analysis/
 进入你 Fork 的仓库 → `Settings` → `Secrets and variables` → `Actions` → `New repository secret`
 
 <div align="center">
-  <img src="../sources/secret_config.png" alt="GitHub Secrets 配置示意图" width="600">
+  <img src="../images/secret_config.png" alt="GitHub Secrets 配置示意图" width="600">
 </div>
 
 #### AI 模型配置（二选一）

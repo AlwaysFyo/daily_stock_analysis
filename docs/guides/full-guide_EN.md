@@ -2,7 +2,7 @@
 
 This document contains the complete configuration guide for the AI Stock Analysis System, intended for users who need advanced features or special deployment methods.
 
-> Quick start guide available in [README_EN.md](README_EN.md). This document covers advanced configuration.
+> Quick start guide available in [README_EN.md](../user/README_EN.md). This document covers advanced configuration.
 
 ## Project Structure
 
@@ -50,7 +50,7 @@ Click the `Fork` button in the upper right corner.
 Go to your forked repo → `Settings` → `Secrets and variables` → `Actions` → `New repository secret`
 
 <div align="center">
-  <img src="../sources/secret_config.png" alt="GitHub Secrets Configuration" width="600">
+  <img src="../images/secret_config.png" alt="GitHub Secrets Configuration" width="600">
 </div>
 
 #### AI Model Configuration (Choose One)

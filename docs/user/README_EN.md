@@ -15,9 +15,9 @@ Analyze your watchlist daily → generate a decision dashboard → push to multi
 
 **Zero-cost deployment** · Runs on GitHub Actions · No server required
 
-[**Quick Start**](#-quick-start) · [**Key Features**](#-key-features) · [**Sample Output**](#-sample-output) · [**Full Guide**](full-guide_EN.md) · [**FAQ**](FAQ_EN.md) · [**Changelog**](CHANGELOG.md)
+[**Quick Start**](#-quick-start) · [**Key Features**](#-key-features) · [**Sample Output**](#-sample-output) · [**Full Guide**](../guides/full-guide_EN.md) · [**FAQ**](./FAQ_EN.md) · [**Changelog**](../CHANGELOG.md)
 
-English | [简体中文](../README.md) | [繁體中文](README_CHT.md)
+English | [简体中文](../../README.md) | [繁體中文](README_CHT.md)
 
 </div>
 
@@ -25,7 +25,7 @@ English | [简体中文](../README.md) | [繁體中文](README_CHT.md)
 
 <div align="center">
   <a href="https://serpapi.com/baidu-search-api?utm_source=github_daily_stock_analysis" target="_blank">
-    <img src="../sources/serpapi_banner_en.png" alt="Easily scrape real-time financial news data from search engines - SerpApi" height="160">
+    <img src="../images/serpapi_banner_en.png" alt="Easily scrape real-time financial news data from search engines - SerpApi" height="160">
   </a>
 </div>
 <br>
@@ -418,18 +418,18 @@ Enable the FastAPI service for configuration management and triggering analysis 
 | `/api/v1/backtest/performance/{code}` | GET | Get per-stock backtest performance |
 | `/api/health` | GET | Health check |
 
-> For detailed instructions, see [Full Guide - API Service](full-guide_EN.md#fastapi-api-service)
+> For detailed instructions, see [Full Guide - API Service](../guides/full-guide_EN.md#fastapi-api-service)
 
 ---
 
 ## 📖 Documentation
 
-- [Complete Configuration Guide](full-guide_EN.md)
-- [FAQ](FAQ_EN.md)
-- [Deployment Guide](DEPLOY_EN.md)
-- [Bot Command Reference](bot-command.md)
-- [Feishu Bot Setup](bot/feishu-bot-config.md)
-- [DingTalk Bot Setup](bot/dingding-bot-config.md)
+- [Complete Configuration Guide](../guides/full-guide_EN.md)
+- [FAQ](./FAQ_EN.md)
+- [Deployment Guide](../developer/DEPLOY_EN.md)
+- [Bot Command Reference](./bot-command.md)
+- [Feishu Bot Setup](../guides/feishu-bot-config.md)
+- [DingTalk Bot Setup](../guides/dingding-bot-config.md)
 
 ---
 
@@ -443,7 +443,7 @@ Enable the FastAPI service for configuration management and triggering analysis 
 
 | Alipay | WeChat Pay | Ko-fi |
 | :---: | :---: | :---: |
-| <img src="../sources/alipay.jpg" width="200" alt="Alipay"> | <img src="../sources/wechatpay.jpg" width="200" alt="WeChat Pay"> | <a href="https://ko-fi.com/mumu157" target="_blank"><img src="../sources/ko-fi.png" width="200" alt="Ko-fi"></a> |
+| <img src="../images/alipay.jpg" width="200" alt="Alipay"> | <img src="../images/wechatpay.jpg" width="200" alt="WeChat Pay"> | <a href="https://ko-fi.com/mumu157" target="_blank"><img src="../images/ko-fi.png" width="200" alt="Ko-fi"></a> |
 
 ## 🤝 Contributing
 
@@ -455,13 +455,13 @@ Contributions are welcome! Please:
 4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+See [CONTRIBUTING.md](../CONTRIBUTING.md) for details.
 
 ---
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](../LICENSE) file for details.
 
 ---
 

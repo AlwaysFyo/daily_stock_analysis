@@ -248,9 +248,9 @@ python main.py --market-only
 ## Still Have Questions?
 
 If the above content doesn't solve your issue, welcome to:
-1. Check [Complete Configuration Guide](full-guide_EN.md)
+1. Check [Complete Configuration Guide](../guides/full-guide_EN.md)
 2. Search or submit [GitHub Issue](https://github.com/ZhuLinsen/daily_stock_analysis/issues)
-3. Check [Changelog](CHANGELOG.md) for latest fixes
+3. Check [Changelog](../CHANGELOG.md) for latest fixes
 
 ---
 

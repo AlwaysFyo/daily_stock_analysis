@@ -12,28 +12,28 @@ https://open.dingtalk.com/document/dingstart/configure-the-robot-application
 
 ### 添加机器人
 
-![img.png](add-dingding-bot.png)
+![img.png](../images/add-dingding-bot.png)
 
 ### 配置机器人使用 Stream模式
 
-![configbot.png](configbot.png)
+![configbot.png](../images/configbot.png)
 
 ### 获取应用凭证
-![img.png](appkey.png)
+![img.png](../images/appkey.png)
 
 ### 配置钉钉凭证
 把钉钉应用凭证配置到配置文件中
-![img.png](envconfig.png)
+![img.png](../images/envconfig.png)
 
 ### 发布应用
-![img.png](img.png)
+![img.png](../images/img.png)
 
-![img.png](group.png)
+![img.png](../images/group.png)
 
-![img.png](add-group-bot.png)
+![img.png](../images/add-group-bot.png)
 
 ### 往下滚动会看到增加的企业机器人
-![img_1.png](img_1.png)
+![img_1.png](../images/img_1.png)
 
 ### 测试机器人命令
-![img_3.png](img_3.png)
+![img_3.png](../images/img_3.png)
