@@ -44,6 +44,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import List, Optional
 
+from data_provider.base import canonical_stock_code
 from src.core.pipeline import StockAnalysisPipeline
 from src.core.market_review import run_market_review
 
@@ -113,6 +114,12 @@ def parse_arguments() -> argparse.Namespace:
         '--schedule',
         action='store_true',
         help='启用定时任务模式，每日定时执行'
+    )
+
+    parser.add_argument(
+        '--no-run-immediately',
+        action='store_true',
+        help='定时任务启动时不立即执行一次'
     )
 
     parser.add_argument(
@@ -216,6 +223,14 @@ def run_full_analysis(
         if getattr(args, 'single_notify', False):
             config.single_stock_notify = True
 
+        # Issue #190: 个股与大盘复盘合并推送
+        merge_notification = (
+            getattr(config, 'merge_email_notification', False)
+            and config.market_review_enabled
+            and not getattr(args, 'no_market_review', False)
+            and not config.single_stock_notify
+        )
+
         # 创建调度器
         save_context_snapshot = None
         if getattr(args, 'no_context_snapshot', False):
@@ -233,7 +248,8 @@ def run_full_analysis(
         results = pipeline.run(
             stock_codes=stock_codes,
             dry_run=args.dry_run,
-            send_notification=not args.no_notify
+            send_notification=not args.no_notify,
+            merge_notification=merge_notification
         )
 
         # Issue #128: 分析间隔 - 在个股分析和大盘分析之间添加延迟
@@ -250,11 +266,28 @@ def run_full_analysis(
                 notifier=pipeline.notifier,
                 analyzer=pipeline.analyzer,
                 search_service=pipeline.search_service,
-                send_notification=not args.no_notify
+                send_notification=not args.no_notify,
+                merge_notification=merge_notification
             )
             # 如果有结果，赋值给 market_report 用于后续飞书文档生成
             if review_result:
                 market_report = review_result
+
+        # Issue #190: 合并推送（个股+大盘复盘）
+        if merge_notification and (results or market_report) and not args.no_notify:
+            parts = []
+            if market_report:
+                parts.append(f"# 📈 大盘复盘\n\n{market_report}")
+            if results:
+                dashboard_content = pipeline.notifier.generate_dashboard_report(results)
+                parts.append(f"# 🚀 个股决策仪表盘\n\n{dashboard_content}")
+            if parts:
+                combined_content = "\n\n---\n\n".join(parts)
+                if pipeline.notifier.is_available():
+                    if pipeline.notifier.send(combined_content, email_send_to_all=True):
+                        logger.info("已合并推送（个股+大盘复盘）")
+                    else:
+                        logger.warning("合并推送失败")
 
         # 输出摘要
         if results:
@@ -414,10 +447,10 @@ def main() -> int:
     for warning in warnings:
         logger.warning(warning)
 
-    # 解析股票列表
+    # 解析股票列表（统一为大写 Issue #355）
     stock_codes = None
     if args.stocks:
-        stock_codes = [code.strip() for code in args.stocks.split(',') if code.strip()]
+        stock_codes = [canonical_stock_code(c) for c in args.stocks.split(',') if (c or "").strip()]
         logger.info(f"使用命令行指定的股票列表: {stock_codes}")
 
     # === 处理 --webui / --webui-only 参数，映射到 --serve / --serve-only ===
@@ -502,7 +535,8 @@ def main() -> int:
                     bocha_keys=config.bocha_api_keys,
                     tavily_keys=config.tavily_api_keys,
                     brave_keys=config.brave_api_keys,
-                    serpapi_keys=config.serpapi_keys
+                    serpapi_keys=config.serpapi_keys,
+                    news_max_age_days=config.news_max_age_days,
                 )
 
             if config.gemini_api_key or config.openai_api_key:
@@ -526,6 +560,15 @@ def main() -> int:
             logger.info("模式: 定时任务")
             logger.info(f"每日执行时间: {config.schedule_time}")
 
+            # Determine whether to run immediately:
+            # Command line arg --no-run-immediately overrides config if present.
+            # Otherwise use config (defaults to True).
+            should_run_immediately = config.schedule_run_immediately
+            if getattr(args, 'no_run_immediately', False):
+                should_run_immediately = False
+            
+            logger.info(f"启动时立即执行: {should_run_immediately}")
+
             from src.scheduler import run_with_schedule
 
             def scheduled_task():
@@ -534,7 +577,7 @@ def main() -> int:
             run_with_schedule(
                 task=scheduled_task,
                 schedule_time=config.schedule_time,
-                run_immediately=True  # 启动时先执行一次
+                run_immediately=should_run_immediately
             )
             return 0
 
