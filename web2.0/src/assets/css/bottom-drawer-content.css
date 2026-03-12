@@ -1,0 +1,231 @@
+/* Bottom Drawer Content Styles - 底部抽屉内容样式
+ * 与概览页风格保持一致
+ */
+
+/* Stock Content Container */
+.drawer-stock-content {
+    color: var(--text-primary);
+    padding: 20px 24px;
+}
+
+/* Stock Header */
+.drawer-stock-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.drawer-stock-code {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    font-family: 'SF Mono', monospace;
+    background: var(--bg-tertiary);
+    padding: 6px 12px;
+    border-radius: 6px;
+}
+
+.drawer-stock-conclusion .tag {
+    font-size: 13px;
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-weight: 600;
+    border: none;
+}
+
+/* Conclusion Tag Colors - Match Overview Page */
+.drawer-stock-conclusion .tag.tag-buy {
+    background-color: var(--tag-conclusion-buy-bg);
+    color: var(--tag-conclusion-buy-text);
+}
+
+.drawer-stock-conclusion .tag.tag-sell {
+    background-color: var(--tag-conclusion-sell-bg);
+    color: var(--tag-conclusion-sell-text);
+}
+
+.drawer-stock-conclusion .tag.tag-hold {
+    background-color: var(--tag-conclusion-hold-bg);
+    color: var(--tag-conclusion-hold-text);
+}
+
+/* Price Section */
+.drawer-price-section {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.drawer-price-item {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: 10px;
+    padding: 16px;
+    text-align: center;
+    transition: all 0.2s ease;
+}
+
+.drawer-price-item:hover {
+    background: var(--bg-tertiary);
+    border-color: var(--border-color);
+}
+
+.drawer-price-label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.drawer-price-value {
+    display: block;
+    font-size: 20px;
+    font-weight: 700;
+    font-family: 'SF Mono', monospace;
+}
+
+.drawer-price-value.buy {
+    color: var(--price-buy);
+}
+
+.drawer-price-value.stop {
+    color: var(--price-stop-loss);
+}
+
+.drawer-price-value.target {
+    color: var(--price-target);
+}
+
+/* Tags Section */
+.drawer-tags-section {
+    margin-bottom: 24px;
+}
+
+.drawer-section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.drawer-tags-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+/* Indicator Tags - Match Overview Page Style */
+.drawer-tags-list .tag {
+    font-size: 12px;
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-weight: 500;
+    background: transparent;
+    border: 1px solid;
+}
+
+/* Positive Tag */
+.drawer-tags-list .tag.tag-positive {
+    border-color: var(--tag-indicator-positive-border);
+    color: var(--tag-indicator-positive-text);
+}
+
+/* Negative Tag */
+.drawer-tags-list .tag.tag-negative {
+    border-color: var(--tag-indicator-negative-border);
+    color: var(--tag-indicator-negative-text);
+}
+
+/* Warning Tag */
+.drawer-tags-list .tag.tag-warning {
+    border-color: var(--tag-indicator-warning-border);
+    color: var(--tag-indicator-warning-text);
+}
+
+/* Neutral Tag */
+.drawer-tags-list .tag.tag-neutral {
+    border-color: var(--tag-indicator-neutral-border);
+    color: var(--tag-indicator-neutral-text);
+}
+
+/* Score Section */
+.drawer-score-section {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+}
+
+.drawer-score-value {
+    font-size: 28px;
+    font-weight: 700;
+    font-family: 'SF Mono', monospace;
+}
+
+.drawer-score-value.excellent {
+    color: var(--status-success);
+}
+
+.drawer-score-value.good {
+    color: var(--status-info);
+}
+
+.drawer-score-value.warning {
+    color: var(--status-warning);
+}
+
+/* Responsive - Match Overview Page Breakpoints */
+@media (max-width: 767.98px) {
+    .drawer-stock-content {
+        padding: 16px;
+    }
+
+    .drawer-price-section {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+
+    .drawer-price-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 16px;
+    }
+
+    .drawer-price-label {
+        margin-bottom: 0;
+    }
+
+    .drawer-stock-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .drawer-stock-code {
+        font-size: 16px;
+    }
+
+    .drawer-score-value {
+        font-size: 24px;
+    }
+}
+
+/* Animation - Match Overview Page */
+.drawer-price-item,
+.drawer-tags-list .tag {
+    transition: all 0.2s ease;
+}
+
+.drawer-tags-list .tag:hover {
+    transform: translateY(-1px);
+}
