@@ -161,6 +161,7 @@ daily_stock_analysis/
 | 变量名 | 说明 | 默认值 | 必填 |
 |--------|------|--------|:----:|
 | `LITELLM_MODEL` | 主模型，格式 `provider/model`（如 `gemini/gemini-2.5-flash`），推荐优先使用 | - | 否 |
+| `AGENT_LITELLM_MODEL` | Agent 主模型（可选）；留空继承 `LITELLM_MODEL`，无 provider 前缀按 `openai/<model>` 解析 | - | 否 |
 | `LITELLM_FALLBACK_MODELS` | 备选模型，逗号分隔 | - | 否 |
 | `LLM_CHANNELS` | 渠道名称列表（逗号分隔），配合 `LLM_{NAME}_*` 使用，详见 [LLM 配置指南](LLM_CONFIG_GUIDE.md) | - | 否 |
 | `LITELLM_CONFIG` | LiteLLM YAML 配置文件路径（高级） | - | 否 |
@@ -237,6 +238,7 @@ daily_stock_analysis/
 | 变量名 | 说明 | 默认值 | 必填 |
 |--------|------|--------|:----:|
 | `TUSHARE_TOKEN` | Tushare Pro Token | - | 可选 |
+| `TICKFLOW_API_KEY` | TickFlow API Key；配置后 A 股大盘复盘指数优先尝试 TickFlow，若套餐支持标的池查询则市场统计也会优先尝试 TickFlow | - | 可选 |
 | `ENABLE_REALTIME_QUOTE` | 启用实时行情（关闭后使用历史收盘价分析） | `true` | 可选 |
 | `ENABLE_REALTIME_TECHNICAL_INDICATORS` | 盘中实时技术面：启用时用实时价计算 MA5/MA10/MA20 与多头排列（Issue #234）；关闭则用昨日收盘 | `true` | 可选 |
 | `ENABLE_CHIP_DISTRIBUTION` | 启用筹码分布分析（该接口不稳定，云端部署建议关闭）。GitHub Actions 用户需在 Repository Variables 中设置 `ENABLE_CHIP_DISTRIBUTION=true` 方可启用；workflow 默认关闭。 | `true` | 可选 |
@@ -254,12 +256,18 @@ daily_stock_analysis/
 > - ETF：返回可得项，缺失能力标记为 `not_supported`，整体不影响原流程；
 > - 美股/港股：返回 `not_supported` 兜底块；
 > - 任何异常走 fail-open，仅记录错误，不影响技术面/新闻/筹码主链路。
+> - 配置 `TICKFLOW_API_KEY` 后，仅 A 股大盘复盘会额外优先尝试 TickFlow 的主要指数行情；若当前套餐支持标的池查询，市场涨跌统计也会优先尝试 TickFlow。个股链路和实时行情优先级不变。
+> - TickFlow 能力按套餐权限分层：有限权限套餐仍可使用主指数查询；支持 `CN_Equity_A` 标的池查询的套餐才会启用 TickFlow 市场统计。
+> - 官方 quickstart 已文档化 `quotes.get(universes=["CN_Equity_A"])`，但线上 smoke test 进一步确认：`TICKFLOW_API_KEY` 不等于一定具备该权限，且 `quotes.get(symbols=[...])` 单次存在标的数量限制。
+> - TickFlow 实际返回的 `change_pct` / `amplitude` 为比例值；系统已在接入层统一转换为百分比值，确保与现有数据源字段语义一致。
 > - 字段契约：
 >   - `fundamental_context.boards.data` = `sector_rankings`（板块涨跌榜，结构 `{top, bottom}`）；
+>   - `fundamental_context.earnings.data.financial_report` = 财报摘要（报告期、营收、归母净利润、经营现金流、ROE）；
+>   - `fundamental_context.earnings.data.dividend` = 分红指标（仅现金分红税前口径，含 `events`、`ttm_cash_dividend_per_share`、`ttm_dividend_yield_pct`）；
 >   - `get_stock_info.belong_boards` = 个股所属板块列表；
 >   - `get_stock_info.boards` 为兼容别名，值与 `belong_boards` 相同（未来仅在大版本考虑移除）；
 >   - `get_stock_info.sector_rankings` 与 `fundamental_context.boards.data` 保持一致。
-> - 板块涨跌榜使用固定回退顺序：`AkShare(EM->Sina) -> Tushare -> efinance`（为稳定性有意固定，不跟全局 priority 走）。
+> - 板块涨跌榜使用数据源顺序：与全局 priority 一致。
 > - 超时控制为 `best-effort` 软超时：阶段会按预算快速降级继续执行，但不保证硬中断底层三方调用。
 > - `FUNDAMENTAL_STAGE_TIMEOUT_SECONDS=1.5` 表示新增基本面阶段的目标预算，不是严格硬 SLA。
 > - 若要硬 SLA，请在后续版本升级为子进程隔离执行并在超时后强制终止。
@@ -936,6 +944,8 @@ A: 检查是否启用了 Actions，以及 cron 表达式是否正确（注意是
 
 ### Error and stability semantics
 - `trade_uid` unique conflict returns `409` (API conflict semantics).
+- sell writes now validate available quantity before insert; oversell is rejected with `409 portfolio_oversell`.
+- portfolio source-event writes now serialize through a SQLite write lock; direct write/delete endpoints may return `409 portfolio_busy` when another ledger mutation is in progress.
 - Snapshot write path is atomic for positions/lots/daily snapshot.
 - FX conversion keeps fail-open behavior (fallback 1:1 with stale marker) to avoid pipeline interruption.
 
@@ -951,6 +961,7 @@ A: 检查是否启用了 Actions，以及 cron 表达式是否正确（注意是
 ### CSV import
 - Supported broker ids: `huatai`, `citic`, `cmb`.
 - Unified workflow: parse CSV into normalized records, then commit into portfolio trades.
+- Commit remains row-by-row instead of one long transaction; busy rows count into `failed_count` rather than converting the whole request to `409`.
 - Dedup policy:
   - First key: `trade_uid` (account-scoped)
   - Fallback key: deterministic hash of date/symbol/side/qty/price/fee/tax/currency
@@ -1003,6 +1014,10 @@ A: 检查是否启用了 Actions，以及 cron 表达式是否正确（注意是
   - `GET /api/v1/portfolio/trades`
   - `GET /api/v1/portfolio/cash-ledger`
   - `GET /api/v1/portfolio/corporate-actions`
+- Added event delete endpoints:
+  - `DELETE /api/v1/portfolio/trades/{trade_id}`
+  - `DELETE /api/v1/portfolio/cash-ledger/{entry_id}`
+  - `DELETE /api/v1/portfolio/corporate-actions/{action_id}`
 - Unified query parameters:
   - `account_id`, `date_from`, `date_to`, `page`, `page_size`
 - Trade/cash/corporate-action specific filters:
@@ -1024,6 +1039,7 @@ A: 检查是否启用了 Actions，以及 cron 表达式是否正确（注意是
   - manual event entry forms: trade / cash / corporate action
   - CSV parse + commit operations (supports `dry_run`)
   - event list panel with filters and pagination
+  - single-account scoped event deletion for trade / cash / corporate action correction
   - broker selector fallback to built-in brokers (`huatai/citic/cmb`) when broker list API fails or returns empty
 
 ### Risk sector concentration semantics

@@ -24,7 +24,7 @@ from api.app import create_app
 from src.config import Config
 from src.services.portfolio_import_service import PortfolioImportService
 from src.services.portfolio_risk_service import PortfolioRiskService
-from src.services.portfolio_service import PortfolioService
+from src.services.portfolio_service import PortfolioBusyError, PortfolioService
 from src.storage import DatabaseManager
 
 
@@ -235,6 +235,79 @@ class PortfolioPr2TestCase(unittest.TestCase):
         self.assertEqual(first_commit["duplicate_count"], 0)
         self.assertEqual(second_commit["inserted_count"], 0)
         self.assertEqual(second_commit["duplicate_count"], 2)
+
+    def test_import_oversell_counts_failed_not_duplicate(self) -> None:
+        account = self.service.create_account(name="Main", broker="Demo", market="cn", base_currency="CNY")
+        aid = account["id"]
+        self.service.record_trade(
+            account_id=aid,
+            symbol="600519",
+            trade_date=date(2026, 1, 1),
+            side="buy",
+            quantity=10,
+            price=100,
+            market="cn",
+            currency="CNY",
+        )
+
+        result = self.import_service.commit_trade_records(
+            account_id=aid,
+            broker="huatai",
+            records=[
+                {
+                    "trade_date": "2026-01-02",
+                    "symbol": "600519",
+                    "side": "sell",
+                    "quantity": 20,
+                    "price": 90,
+                    "fee": 0.0,
+                    "tax": 0.0,
+                    "trade_uid": "HT-SELL-001",
+                    "dedup_hash": "oversell-hash-001",
+                    "market": "cn",
+                    "currency": "CNY",
+                }
+            ],
+        )
+
+        self.assertEqual(result["inserted_count"], 0)
+        self.assertEqual(result["duplicate_count"], 0)
+        self.assertEqual(result["failed_count"], 1)
+        self.assertEqual(len(result["errors"]), 1)
+
+    def test_import_busy_counts_failed_not_duplicate(self) -> None:
+        account = self.service.create_account(name="Main", broker="Demo", market="cn", base_currency="CNY")
+        aid = account["id"]
+
+        with patch.object(
+            self.import_service.portfolio_service,
+            "record_trade",
+            side_effect=PortfolioBusyError("Portfolio ledger is busy; please retry shortly."),
+        ):
+            result = self.import_service.commit_trade_records(
+                account_id=aid,
+                broker="huatai",
+                records=[
+                    {
+                        "trade_date": "2026-01-02",
+                        "symbol": "600519",
+                        "side": "buy",
+                        "quantity": 10,
+                        "price": 90,
+                        "fee": 0.0,
+                        "tax": 0.0,
+                        "trade_uid": "HT-BUSY-001",
+                        "dedup_hash": "busy-hash-001",
+                        "market": "cn",
+                        "currency": "CNY",
+                    }
+                ],
+            )
+
+        self.assertEqual(result["inserted_count"], 0)
+        self.assertEqual(result["duplicate_count"], 0)
+        self.assertEqual(result["failed_count"], 1)
+        self.assertIn("portfolio_busy", result["errors"][0])
 
     def test_risk_threshold_boundary(self) -> None:
         account = self.service.create_account(name="Main", broker="Demo", market="cn", base_currency="CNY")
