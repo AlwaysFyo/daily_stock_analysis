@@ -111,12 +111,12 @@ local/
 run.sh
 verify_*.py
 
-# ============================================================
-# 静态资源（运行时生成）
-# ============================================================
-static/
+# ignore Claude workspace artifacts, but keep shared repo skills versioned
+.claude/*
+!.claude/skills/
+!.claude/skills/**
 
-# ============================================================
-# 其他
-# ============================================================
-CLAUDE.md
+# ignore static files
+static/
+/apps/dsa-desktop/dist/
+/apps/dsa-desktop/node_modules/
