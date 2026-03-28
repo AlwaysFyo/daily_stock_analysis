@@ -40,10 +40,31 @@ export const stocksApi = {
             headers: {
                 'Content-Type': 'multipart/form-data',
             },
-            timeout: 60000, // Vision API can be slow
+            timeout: 60000,
         });
 
         return toCamelCase(response.data);
+    },
+
+    /**
+     * Parse import data from CSV/Excel/clipboard text
+     * @param {string|File} data - Text string or File object
+     * @returns {Promise<Object>} Parsed stock codes
+     */
+    async parseImport(data) {
+        if (data instanceof File) {
+            const formData = new FormData();
+            formData.append('file', data);
+            const response = await axios.post(endpoints.stocks.parseImport, formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                },
+            });
+            return toCamelCase(response.data);
+        } else {
+            const response = await axios.post(endpoints.stocks.parseImport, { text: data });
+            return toCamelCase(response.data);
+        }
     },
 
     /**
@@ -69,6 +90,77 @@ export const stocksApi = {
         };
 
         const response = await axios.get(endpoints.stocks.history(stockCode), { params: queryParams });
+        return toCamelCase(response.data);
+    },
+
+    /**
+     * Get watchlist stocks
+     * @returns {Promise<Object>} Watchlist with items and total
+     */
+    async getWatchlist() {
+        const response = await axios.get(endpoints.stocks.watchlist);
+        return toCamelCase(response.data);
+    },
+
+    /**
+     * Get holding stocks
+     * @returns {Promise<Object>} Holdings with items and total
+     */
+    async getHoldings() {
+        const response = await axios.get(endpoints.stocks.holding);
+        return toCamelCase(response.data);
+    },
+
+    /**
+     * Add stock to watchlist
+     * @param {string} code - Stock code
+     * @param {string} stockType - Stock type (stock/etf/index)
+     * @returns {Promise<Object>} Add result
+     */
+    async addToWatchlist(code, stockType = 'stock') {
+        const response = await axios.post(endpoints.stocks.watchlistAdd, {
+            code,
+            status: 'watchlist',
+            stock_type: stockType,
+        });
+        return toCamelCase(response.data);
+    },
+
+    /**
+     * Add stock to holdings
+     * @param {string} code - Stock code
+     * @param {string} stockType - Stock type (stock/etf/index)
+     * @returns {Promise<Object>} Add result
+     */
+    async addToHoldings(code, stockType = 'stock') {
+        const response = await axios.post(endpoints.stocks.holdingAdd, {
+            code,
+            status: 'holding',
+            stock_type: stockType,
+        });
+        return toCamelCase(response.data);
+    },
+
+    /**
+     * Remove stock from list
+     * @param {string} stockCode - Stock code
+     * @returns {Promise<Object>} Remove result
+     */
+    async removeStock(stockCode) {
+        const response = await axios.delete(endpoints.stocks.stock(stockCode));
+        return toCamelCase(response.data);
+    },
+
+    /**
+     * Update stock status (switch between watchlist/holding)
+     * @param {string} stockCode - Stock code
+     * @param {string} status - New status ('watchlist' or 'holding')
+     * @returns {Promise<Object>} Update result
+     */
+    async updateStockStatus(stockCode, status) {
+        const response = await axios.put(endpoints.stocks.stockStatus(stockCode), {
+            status,
+        });
         return toCamelCase(response.data);
     },
 };

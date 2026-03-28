@@ -3,7 +3,9 @@
  * Layout: Fixed area + Table internal scrolling
  */
 
-const { ref, computed, onMounted } = Vue;
+const { ref, computed, onMounted, watch } = Vue;
+import { stocksApi } from '../../api/stocks.js';
+import { analysisApi } from '../../api/analysis.js';
 import { getConclusionClass, getTagClass } from '../../utils/tagStyles.js';
 import BottomDrawerModal from '../common/BottomDrawerModal.js';
 
@@ -21,388 +23,9 @@ export default {
         const searchQuery = ref('');
         const selectedStock = ref(null);
         const showModal = ref(false);
-
-        const stockList = ref([
-            {
-                code: '300750',
-                name: '宁德时代',
-                price: 188.40,
-                change: '+2.03%',
-                changeUp: true,
-                conclusion: '买入',
-                tags: [
-                    { label: '放量突破', icon: 'bi-graph-up-arrow' },
-                    { label: '趋势向上', icon: 'bi-trending-up' },
-                ],
-                score: 84,
-                buyPrice: 182,
-                stopLoss: 176,
-                target: 205,
-                sentiment: [
-                    { title: '机构观点偏多', source: '示例来源', time: '10:12' },
-                ],
-            },
-            {
-                code: '600519',
-                name: '贵州茅台',
-                price: 1666.80,
-                change: '+0.86%',
-                changeUp: true,
-                conclusion: '观望',
-                tags: [
-                    { label: '乖离>5%', icon: 'bi-arrow-down-up' },
-                    { label: '多头排列', icon: 'bi-graph-up-arrow' },
-                ],
-                score: 78,
-                buyPrice: 1620,
-                stopLoss: 1578,
-                target: 1750,
-                sentiment: [
-                    { title: '短期高位震荡', source: '示例来源', time: '09:40' },
-                ],
-            },
-            {
-                code: '000858',
-                name: '五粮液',
-                price: 138.20,
-                change: '-1.12%',
-                changeUp: false,
-                conclusion: '卖出',
-                tags: [
-                    { label: '跌破MA20', icon: 'bi-arrow-down-up' },
-                    { label: '放量下跌', icon: 'bi-arrow-down' },
-                ],
-                score: 61,
-                buyPrice: 132,
-                stopLoss: 128,
-                target: 148,
-                sentiment: [],
-            },
-            {
-                code: '002594',
-                name: '比亚迪',
-                price: 245.60,
-                change: '+3.25%',
-                changeUp: true,
-                conclusion: '买入',
-                tags: [
-                    { label: '突破前高', icon: 'bi-graph-up-arrow' },
-                    { label: '量价齐升', icon: 'bi-trending-up' },
-                ],
-                score: 88,
-                buyPrice: 238,
-                stopLoss: 228,
-                target: 275,
-                sentiment: [
-                    { title: '新能源销量创新高', source: '财经新闻', time: '08:30' },
-                ],
-            },
-            {
-                code: '601318',
-                name: '中国平安',
-                price: 42.85,
-                change: '-0.58%',
-                changeUp: false,
-                conclusion: '观望',
-                tags: [
-                    { label: '横盘整理', icon: 'bi-arrow-left-right' },
-                    { label: '量能萎缩', icon: 'bi-arrow-down' },
-                ],
-                score: 72,
-                buyPrice: 41,
-                stopLoss: 39,
-                target: 48,
-                sentiment: [],
-            },
-            {
-                code: '600036',
-                name: '招商银行',
-                price: 32.45,
-                change: '+1.12%',
-                changeUp: true,
-                conclusion: '买入',
-                tags: [
-                    { label: '底部放量', icon: 'bi-graph-up-arrow' },
-                    { label: 'MACD金叉', icon: 'bi-trending-up' },
-                ],
-                score: 82,
-                buyPrice: 31.5,
-                stopLoss: 30,
-                target: 38,
-                sentiment: [
-                    { title: '业绩超预期', source: '研报', time: '11:20' },
-                ],
-            },
-            {
-                code: '000333',
-                name: '美的集团',
-                price: 58.90,
-                change: '+0.45%',
-                changeUp: true,
-                conclusion: '观望',
-                tags: [
-                    { label: '均线粘合', icon: 'bi-arrow-left-right' },
-                    { label: '等待方向', icon: 'bi-arrow-left-right' },
-                ],
-                score: 75,
-                buyPrice: 56,
-                stopLoss: 53,
-                target: 65,
-                sentiment: [],
-            },
-            {
-                code: '002415',
-                name: '海康威视',
-                price: 32.15,
-                change: '-2.35%',
-                changeUp: false,
-                conclusion: '卖出',
-                tags: [
-                    { label: '破位下行', icon: 'bi-arrow-down' },
-                    { label: '放量下跌', icon: 'bi-arrow-down' },
-                ],
-                score: 55,
-                buyPrice: 30,
-                stopLoss: 28,
-                target: 36,
-                sentiment: [
-                    { title: '海外业务承压', source: '行业分析', time: '14:30' },
-                ],
-            },
-            {
-                code: '600276',
-                name: '恒瑞医药',
-                price: 42.30,
-                change: '+1.85%',
-                changeUp: true,
-                conclusion: '买入',
-                tags: [
-                    { label: '创新药获批', icon: 'bi-graph-up-arrow' },
-                    { label: '趋势反转', icon: 'bi-trending-up' },
-                ],
-                score: 86,
-                buyPrice: 40,
-                stopLoss: 38,
-                target: 52,
-                sentiment: [
-                    { title: '新药临床试验成功', source: '公司公告', time: '09:15' },
-                ],
-            },
-            {
-                code: '000568',
-                name: '泸州老窖',
-                price: 185.60,
-                change: '+0.92%',
-                changeUp: true,
-                conclusion: '观望',
-                tags: [
-                    { label: '高位震荡', icon: 'bi-arrow-left-right' },
-                    { label: '筹码集中', icon: 'bi-arrow-left-right' },
-                ],
-                score: 76,
-                buyPrice: 175,
-                stopLoss: 168,
-                target: 205,
-                sentiment: [],
-            },
-            {
-                code: '002230',
-                name: '科大讯飞',
-                price: 48.75,
-                change: '+4.56%',
-                changeUp: true,
-                conclusion: '买入',
-                tags: [
-                    { label: 'AI概念爆发', icon: 'bi-graph-up-arrow' },
-                    { label: '主力资金流入', icon: 'bi-trending-up' },
-                ],
-                score: 90,
-                buyPrice: 46,
-                stopLoss: 42,
-                target: 58,
-                sentiment: [
-                    { title: '大模型技术突破', source: '科技资讯', time: '10:45' },
-                ],
-            },
-            {
-                code: '603259',
-                name: '药明康德',
-                price: 68.90,
-                change: '-1.28%',
-                changeUp: false,
-                conclusion: '观望',
-                tags: [
-                    { label: '回调企稳', icon: 'bi-arrow-left-right' },
-                    { label: '估值修复', icon: 'bi-arrow-left-right' },
-                ],
-                score: 70,
-                buyPrice: 65,
-                stopLoss: 60,
-                target: 78,
-                sentiment: [],
-            },
-            {
-                code: '600900',
-                name: '长江电力',
-                price: 28.35,
-                change: '+0.35%',
-                changeUp: true,
-                conclusion: '买入',
-                tags: [
-                    { label: '高股息', icon: 'bi-graph-up-arrow' },
-                    { label: '防御属性', icon: 'bi-shield-check' },
-                ],
-                score: 80,
-                buyPrice: 27.5,
-                stopLoss: 26,
-                target: 32,
-                sentiment: [],
-            },
-            {
-                code: '002475',
-                name: '立讯精密',
-                price: 32.80,
-                change: '+2.15%',
-                changeUp: true,
-                conclusion: '买入',
-                tags: [
-                    { label: '果链龙头', icon: 'bi-graph-up-arrow' },
-                    { label: '订单饱满', icon: 'bi-trending-up' },
-                ],
-                score: 83,
-                buyPrice: 31,
-                stopLoss: 29,
-                target: 38,
-                sentiment: [
-                    { title: '新机型备货启动', source: '供应链消息', time: '13:20' },
-                ],
-            },
-            {
-                code: '000001',
-                name: '平安银行',
-                price: 11.25,
-                change: '-0.88%',
-                changeUp: false,
-                conclusion: '观望',
-                tags: [
-                    { label: '估值低位', icon: 'bi-arrow-left-right' },
-                    { label: '等待催化', icon: 'bi-arrow-left-right' },
-                ],
-                score: 68,
-                buyPrice: 10.5,
-                stopLoss: 9.8,
-                target: 13,
-                sentiment: [],
-            },
-            {
-                code: '601012',
-                name: '隆基绿能',
-                price: 22.45,
-                change: '-3.25%',
-                changeUp: false,
-                conclusion: '卖出',
-                tags: [
-                    { label: '行业产能过剩', icon: 'bi-arrow-down' },
-                    { label: '价格战加剧', icon: 'bi-arrow-down' },
-                ],
-                score: 52,
-                buyPrice: 21,
-                stopLoss: 19,
-                target: 26,
-                sentiment: [
-                    { title: '光伏行业景气度下行', source: '行业报告', time: '15:00' },
-                ],
-            },
-            {
-                code: '002352',
-                name: '顺丰控股',
-                price: 42.15,
-                change: '+0.68%',
-                changeUp: true,
-                conclusion: '观望',
-                tags: [
-                    { label: '业务量回升', icon: 'bi-graph-up-arrow' },
-                    { label: '成本控制', icon: 'bi-arrow-left-right' },
-                ],
-                score: 74,
-                buyPrice: 40,
-                stopLoss: 37,
-                target: 48,
-                sentiment: [],
-            },
-            {
-                code: '300059',
-                name: '东方财富',
-                price: 15.85,
-                change: '+2.45%',
-                changeUp: true,
-                conclusion: '买入',
-                tags: [
-                    { label: '市场活跃受益', icon: 'bi-graph-up-arrow' },
-                    { label: '成交量放大', icon: 'bi-trending-up' },
-                ],
-                score: 85,
-                buyPrice: 15,
-                stopLoss: 13.5,
-                target: 19,
-                sentiment: [
-                    { title: '两市成交额破万亿', source: '市场数据', time: '15:30' },
-                ],
-            },
-            {
-                code: '600309',
-                name: '万华化学',
-                price: 85.60,
-                change: '-0.45%',
-                changeUp: false,
-                conclusion: '观望',
-                tags: [
-                    { label: '周期底部', icon: 'bi-arrow-left-right' },
-                    { label: 'MDI价格企稳', icon: 'bi-arrow-left-right' },
-                ],
-                score: 73,
-                buyPrice: 80,
-                stopLoss: 75,
-                target: 95,
-                sentiment: [],
-            },
-            {
-                code: '002714',
-                name: '牧原股份',
-                price: 42.80,
-                change: '+1.58%',
-                changeUp: true,
-                conclusion: '买入',
-                tags: [
-                    { label: '猪周期反转', icon: 'bi-graph-up-arrow' },
-                    { label: '产能去化', icon: 'bi-trending-up' },
-                ],
-                score: 81,
-                buyPrice: 40,
-                stopLoss: 37,
-                target: 50,
-                sentiment: [
-                    { title: '能繁母猪存栏下降', source: '农业数据', time: '10:00' },
-                ],
-            },
-            {
-                code: '601888',
-                name: '中国中免',
-                price: 82.35,
-                change: '-1.85%',
-                changeUp: false,
-                conclusion: '观望',
-                tags: [
-                    { label: '消费复苏缓慢', icon: 'bi-arrow-down' },
-                    { label: '等待旺季', icon: 'bi-arrow-left-right' },
-                ],
-                score: 67,
-                buyPrice: 78,
-                stopLoss: 72,
-                target: 95,
-                sentiment: [],
-            },
-        ]);
+        const stockList = ref([]);
+        const isLoading = ref(false);
+        const loadError = ref(null);
 
         const filteredStocks = computed(() => {
             let result = [...stockList.value];
@@ -443,6 +66,70 @@ export default {
             };
         });
 
+        const loadStocks = async () => {
+            if (isLoading.value) return;
+
+            isLoading.value = true;
+            loadError.value = null;
+
+            try {
+                let response;
+                if (activeTab.value === 'watchlist') {
+                    response = await stocksApi.getWatchlist();
+                } else if (activeTab.value === 'holding') {
+                    response = await stocksApi.getHoldings();
+                } else {
+                    stockList.value = [];
+                    return;
+                }
+
+                const items = response.items || [];
+                stockList.value = items.map(item => ({
+                    code: item.code,
+                    name: item.name,
+                    stockType: item.stockType,
+                    status: item.status,
+                    market: item.market,
+                    industry: item.industry,
+                    sector: item.sector,
+                    price: 0,
+                    change: '+0.00%',
+                    changeUp: true,
+                    conclusion: '观望',
+                    tags: [],
+                    score: 0,
+                    buyPrice: null,
+                    stopLoss: null,
+                    target: null,
+                    sentiment: [],
+                }));
+
+                loadQuotesForStocks();
+            } catch (err) {
+                console.error('Failed to load stocks:', err);
+                loadError.value = err.message || '加载失败';
+                stockList.value = [];
+            } finally {
+                isLoading.value = false;
+            }
+        };
+
+        const loadQuotesForStocks = async () => {
+            for (const stock of stockList.value) {
+                try {
+                    const quote = await stocksApi.getQuote(stock.code);
+                    stock.price = quote.currentPrice || 0;
+                    const changePercent = quote.changePercent || 0;
+                    stock.change = changePercent >= 0 
+                        ? `+${changePercent.toFixed(2)}%` 
+                        : `${changePercent.toFixed(2)}%`;
+                    stock.changeUp = changePercent >= 0;
+                } catch (err) {
+                    console.warn(`Failed to load quote for ${stock.code}:`, err);
+                }
+            }
+        };
+
         const selectStock = (stock) => {
             selectedStock.value = stock;
             showModal.value = true;
@@ -455,41 +142,101 @@ export default {
             }, 300);
         };
 
-        const handleImportWatchlist = () => {
-            alert('导入自选功能开发中');
-        };
-
         const handleImportCSV = () => {
-            alert('CSV导入功能开发中');
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.csv,.xlsx,.xls';
+            input.onchange = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                try {
+                    const result = await stocksApi.parseImport(file);
+                    if (result.codes && result.codes.length > 0) {
+                        for (const code of result.codes) {
+                            await stocksApi.addToWatchlist(code);
+                        }
+                        await loadStocks();
+                        alert(`成功导入 ${result.codes.length} 只股票`);
+                    } else {
+                        alert('未能识别股票代码');
+                    }
+                } catch (err) {
+                    alert('导入失败: ' + err.message);
+                }
+            };
+            input.click();
         };
 
-        const handleAddStock = () => {
-            alert('新增股票功能开发中');
+        const handleAddStock = async () => {
+            const code = prompt('请输入股票代码：');
+            if (!code || !code.trim()) return;
+
+            try {
+                await stocksApi.addToWatchlist(code.trim());
+                await loadStocks();
+                alert('添加成功');
+            } catch (err) {
+                alert('添加失败: ' + err.message);
+            }
         };
 
         const handleViewDetails = () => {
-            alert('查看个股详情功能开发中');
+            if (selectedStock.value) {
+                alert(`查看 ${selectedStock.value.code} 详情功能开发中`);
+            }
         };
 
-        const handleRerunStock = () => {
-            alert('重跑该股票功能开发中');
+        const handleRerunStock = async () => {
+            if (!selectedStock.value) return;
+
+            try {
+                await analysisApi.analyzeAsync({
+                    stockCode: selectedStock.value.code,
+                    reportType: 'detailed',
+                });
+                alert(`已提交 ${selectedStock.value.code} 分析任务`);
+            } catch (err) {
+                alert('提交失败: ' + err.message);
+            }
         };
 
         const handleCopyPush = () => {
-            alert('复制推送文案功能开发中');
+            if (selectedStock.value) {
+                const text = `${selectedStock.value.code} ${selectedStock.value.name}\n建议: ${selectedStock.value.conclusion}\n评分: ${selectedStock.value.score}`;
+                navigator.clipboard.writeText(text).then(() => {
+                    alert('已复制到剪贴板');
+                }).catch(() => {
+                    alert('复制失败');
+                });
+            }
         };
 
-        const handleRemoveStock = (stock) => {
-            if (confirm(`确定要移除 ${stock.code} ${stock.name} 吗？`)) {
+        const handleRemoveStock = async (stock) => {
+            if (!confirm(`确定要移除 ${stock.code} ${stock.name} 吗？`)) return;
+
+            try {
+                await stocksApi.removeStock(stock.code);
                 const index = stockList.value.findIndex(s => s.code === stock.code);
                 if (index > -1) {
                     stockList.value.splice(index, 1);
                 }
+            } catch (err) {
+                alert('移除失败: ' + err.message);
             }
         };
 
-        const handleAddToPosition = (stock) => {
-            alert(`已将 ${stock.code} ${stock.name} 加入持仓`);
+        const handleAddToPosition = async (stock) => {
+            try {
+                await stocksApi.updateStockStatus(stock.code, 'holding');
+                const index = stockList.value.findIndex(s => s.code === stock.code);
+                if (index > -1) {
+                    stockList.value.splice(index, 1);
+                }
+                alert(`已将 ${stock.code} ${stock.name} 加入持仓`);
+            } catch (err) {
+                alert('操作失败: ' + err.message);
+            }
         };
 
         const getScoreClass = (score) => {
@@ -543,6 +290,14 @@ export default {
             row.classList.remove('indicator-from-top', 'indicator-from-bottom');
         };
 
+        watch(activeTab, () => {
+            loadStocks();
+        });
+
+        onMounted(() => {
+            loadStocks();
+        });
+
         return {
             activeTab,
             filterCategory,
@@ -551,6 +306,8 @@ export default {
             selectedStock,
             showModal,
             stockList,
+            isLoading,
+            loadError,
             filteredStocks,
             dataStats,
             selectStock,
@@ -559,7 +316,6 @@ export default {
             getConclusionClass,
             getTagClass,
             getScoreClass,
-            handleImportWatchlist,
             handleImportCSV,
             handleAddStock,
             handleViewDetails,
@@ -569,6 +325,7 @@ export default {
             handleAddToPosition,
             handleRowMouseEnter,
             handleRowMouseLeave,
+            loadStocks,
         };
     },
 
@@ -611,8 +368,8 @@ export default {
                         <button
                             type="button"
                             class="btn btn-fixed-width"
-                            :class="activeTab === 'position' ? 'btn-dark' : 'btn-outline-primary'"
-                            @click="activeTab = 'position'"
+                            :class="activeTab === 'holding' ? 'btn-dark' : 'btn-outline-primary'"
+                            @click="activeTab = 'holding'"
                         >
                             <span class="btn-content">持仓</span>
                         </button>
@@ -716,12 +473,12 @@ export default {
                                 </td>
                                 <td @click="selectStock(stock)">
                                     <span class="score-badge" :class="getScoreClass(stock.score)">
-                                        {{ stock.score }}
+                                        {{ stock.score || '-' }}
                                     </span>
                                 </td>
                                 <td @click="selectStock(stock)">
                                     <span class="tag" :class="getConclusionClass(stock.conclusion)">
-                                        {{ stock.conclusion }}
+                                        {{ stock.conclusion || '-' }}
                                     </span>
                                 </td>
                                 <td @click="selectStock(stock)">
@@ -760,12 +517,17 @@ export default {
                         </tbody>
                     </table>
 
-                    <div v-if="filteredStocks.length === 0" class="watchlist-empty-state">
+                    <div v-if="isLoading" class="watchlist-loading-state">
+                        <div class="watchlist-loading-spinner"></div>
+                        <div class="watchlist-loading-text">正在加载...</div>
+                    </div>
+
+                    <div v-else-if="filteredStocks.length === 0" class="watchlist-empty-state">
                         <div class="watchlist-empty-icon">
                             <i class="bi bi-inbox"></i>
                         </div>
                         <div class="watchlist-empty-title">暂无数据</div>
-                        <div class="watchlist-empty-desc">没有找到符合条件的股票</div>
+                        <div class="watchlist-empty-desc">{{ loadError || '没有找到符合条件的股票' }}</div>
                     </div>
                 </div>
 
@@ -795,16 +557,16 @@ export default {
                         <div class="mb-4">
                             <h5 class="fw-bold">{{ selectedStock.code }} {{ selectedStock.name }}</h5>
                             <p class="text-muted small mb-2">
-                                最近一次结论：{{ selectedStock.conclusion }} · 综合评分 {{ selectedStock.score }}
+                                最近一次结论：{{ selectedStock.conclusion || '-' }} · 综合评分 {{ selectedStock.score || '-' }}
                             </p>
-                            <div class="d-flex gap-3 text-sm">
+                            <div class="d-flex gap-3 text-sm" v-if="selectedStock.buyPrice">
                                 <span>买入：<strong>{{ selectedStock.buyPrice }}</strong></span>
                                 <span>止损：<strong>{{ selectedStock.stopLoss }}</strong></span>
                                 <span>目标：<strong>{{ selectedStock.target }}</strong></span>
                             </div>
                         </div>
 
-                        <div class="mb-4">
+                        <div class="mb-4" v-if="selectedStock.tags && selectedStock.tags.length > 0">
                             <h6 class="text-muted small mb-2">标签</h6>
                             <div class="d-flex gap-2 flex-wrap">
                                 <span
@@ -819,9 +581,9 @@ export default {
                             </div>
                         </div>
 
-                        <div class="mb-4">
+                        <div class="mb-4" v-if="selectedStock.sentiment && selectedStock.sentiment.length > 0">
                             <h6 class="text-muted small mb-2">最近舆情</h6>
-                            <div v-if="selectedStock.sentiment.length > 0" class="d-flex flex-column gap-2">
+                            <div class="d-flex flex-column gap-2">
                                 <div
                                     v-for="(item, index) in selectedStock.sentiment"
                                     :key="index"
@@ -830,9 +592,6 @@ export default {
                                     <div class="fw-medium">{{ item.title }}</div>
                                     <small class="text-muted">{{ item.source }} · {{ item.time }}</small>
                                 </div>
-                            </div>
-                            <div v-else class="text-muted small">
-                                暂无舆情数据
                             </div>
                         </div>
 

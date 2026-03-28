@@ -135,7 +135,21 @@ def prepare_webui_frontend_assets() -> bool:
     Manual mode (WEBUI_AUTO_BUILD=false):
     - Do not compile frontend during backend startup.
     - Only check whether existing artifacts are available.
+    
+    Web2.0 mode (WEBUI_FRONTEND=web2.0):
+    - Skip npm build, use web2.0 directory directly (no build required).
     """
+    frontend_type = os.getenv("WEBUI_FRONTEND", "dsa-web").lower().strip()
+    
+    if frontend_type in ("web2.0", "web20"):
+        web2_dir = Path(__file__).resolve().parent.parent / "web2.0"
+        web2_index = web2_dir / "index.html"
+        if web2_index.exists():
+            logger.info("WEBUI_FRONTEND=web2.0，使用 web2.0 前端目录: %s", web2_dir)
+            return True
+        logger.warning("WEBUI_FRONTEND=web2.0 但 web2.0/index.html 不存在: %s", web2_index)
+        logger.warning("将回退到 dsa-web 前端")
+    
     frontend_dir = Path(__file__).resolve().parent.parent / "apps" / "dsa-web"
     auto_build_enabled = _is_truthy_env("WEBUI_AUTO_BUILD", "true")
     artifact_index = _resolve_artifact_index(frontend_dir)

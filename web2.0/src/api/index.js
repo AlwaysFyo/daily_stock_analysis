@@ -20,10 +20,10 @@ axios.interceptors.response.use(
     (error) => {
         // Handle 401 Unauthorized
         if (error.response?.status === 401) {
-            const path = window.location.pathname + window.location.search;
+            const path = window.location.hash.slice(1) || '/';
             if (!path.startsWith('/login')) {
                 const redirect = encodeURIComponent(path);
-                window.location.assign(`/login?redirect=${redirect}`);
+                window.location.hash = `/login?redirect=${redirect}`;
             }
         }
         return Promise.reject(error);

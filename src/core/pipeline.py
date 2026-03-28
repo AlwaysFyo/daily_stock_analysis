@@ -208,6 +208,13 @@ class StockAnalysisPipeline:
             if not stock_name:
                 stock_name = f'股票{code}'
 
+            # 确保 StockInfo 表中存在该股票记录（获取数据后、分析前写入）
+            # 这样即使后续分析失败，股票信息仍被保留
+            try:
+                self.db.ensure_stock_info_exists(code=code, name=stock_name)
+            except Exception as e:
+                logger.debug(f"{stock_name}({code}) 写入 StockInfo 失败（不影响分析）: {e}")
+
             # Step 2: 获取筹码分布 - 使用统一入口，带熔断保护
             chip_data = None
             try:

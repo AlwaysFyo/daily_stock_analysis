@@ -101,118 +101,6 @@ export default {
             };
         });
 
-        // Mock data for development
-        const mockTasks = [
-            {
-                taskId: 'task_001_abc123',
-                stockCode: '000001.SZ',
-                stockName: '平安银行',
-                status: 'completed',
-                progress: 100,
-                message: '分析完成',
-                createdAt: '2026-02-28T09:30:00Z'
-            },
-            {
-                taskId: 'task_002_def456',
-                stockCode: '000002.SZ',
-                stockName: '万科A',
-                status: 'completed',
-                progress: 100,
-                message: '分析完成',
-                createdAt: '2026-02-28T09:35:00Z'
-            },
-            {
-                taskId: 'task_003_ghi789',
-                stockCode: '600519.SH',
-                stockName: '贵州茅台',
-                status: 'processing',
-                progress: 65,
-                message: '正在生成技术分析报告...',
-                createdAt: '2026-02-28T10:00:00Z'
-            },
-            {
-                taskId: 'task_004_jkl012',
-                stockCode: '000858.SZ',
-                stockName: '五粮液',
-                status: 'processing',
-                progress: 30,
-                message: '正在获取行情数据...',
-                createdAt: '2026-02-28T10:05:00Z'
-            },
-            {
-                taskId: 'task_005_mno345',
-                stockCode: '002594.SZ',
-                stockName: '比亚迪',
-                status: 'pending',
-                progress: 0,
-                message: '等待执行',
-                createdAt: '2026-02-28T10:10:00Z'
-            },
-            {
-                taskId: 'task_006_pqr678',
-                stockCode: '300750.SZ',
-                stockName: '宁德时代',
-                status: 'pending',
-                progress: 0,
-                message: '等待执行',
-                createdAt: '2026-02-28T10:12:00Z'
-            },
-            {
-                taskId: 'task_007_stu901',
-                stockCode: '601318.SH',
-                stockName: '中国平安',
-                status: 'failed',
-                progress: 45,
-                message: '数据源连接超时',
-                createdAt: '2026-02-28T09:45:00Z'
-            },
-            {
-                taskId: 'task_008_vwx234',
-                stockCode: '600036.SH',
-                stockName: '招商银行',
-                status: 'completed',
-                progress: 100,
-                message: '分析完成',
-                createdAt: '2026-02-28T09:20:00Z'
-            },
-            {
-                taskId: 'task_009_yz5678',
-                stockCode: '000568.SZ',
-                stockName: '泸州老窖',
-                status: 'processing',
-                progress: 80,
-                message: '正在生成AI分析报告...',
-                createdAt: '2026-02-28T10:15:00Z'
-            },
-            {
-                taskId: 'task_010_abc901',
-                stockCode: '002415.SZ',
-                stockName: '海康威视',
-                status: 'pending',
-                progress: 0,
-                message: '等待执行',
-                createdAt: '2026-02-28T10:20:00Z'
-            },
-            {
-                taskId: 'task_011_def234',
-                stockCode: '600276.SH',
-                stockName: '恒瑞医药',
-                status: 'completed',
-                progress: 100,
-                message: '分析完成',
-                createdAt: '2026-02-28T08:30:00Z'
-            },
-            {
-                taskId: 'task_012_ghi567',
-                stockCode: '002230.SZ',
-                stockName: '科大讯飞',
-                status: 'failed',
-                progress: 20,
-                message: 'API调用次数超限',
-                createdAt: '2026-02-28T09:50:00Z'
-            }
-        ];
-
         // Methods
         const loadTasks = async () => {
             if (isLoading.value) return;
@@ -221,9 +109,22 @@ export default {
             loadError.value = null;
 
             try {
-                await new Promise(resolve => setTimeout(resolve, 500));
-                tasks.value = [...mockTasks].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+                const response = await analysisApi.getTasks({ limit: 100 });
+                tasks.value = (response.tasks || []).map(task => ({
+                    taskId: task.taskId,
+                    stockCode: task.stockCode,
+                    stockName: task.stockName,
+                    status: task.status,
+                    progress: task.progress || 0,
+                    message: task.message,
+                    reportType: task.reportType,
+                    createdAt: task.createdAt,
+                    startedAt: task.startedAt,
+                    completedAt: task.completedAt,
+                    error: task.error,
+                })).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
             } catch (err) {
+                console.error('Failed to load tasks:', err);
                 loadError.value = err.message || '网络连接失败，请检查网络后重试';
             } finally {
                 isLoading.value = false;

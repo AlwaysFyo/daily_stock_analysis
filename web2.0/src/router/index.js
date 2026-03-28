@@ -13,6 +13,18 @@ const routes = [
         meta: { title: '概览', icon: 'bi-grid' }
     },
     {
+        path: '/login',
+        name: 'Login',
+        component: () => import('../components/pages/LoginPage.js'),
+        meta: { title: '登录', public: true }
+    },
+    {
+        path: '/chat',
+        name: 'Chat',
+        component: () => import('../components/pages/ChatPage.js'),
+        meta: { title: 'Agent对话', icon: 'bi-chat-dots' }
+    },
+    {
         path: '/watchlist',
         name: 'Watchlist',
         component: () => import('../components/pages/WatchlistPage.js'),
@@ -29,6 +41,12 @@ const routes = [
         name: 'Settings',
         component: () => import('../components/pages/SettingsPage.js'),
         meta: { title: '设置', icon: 'bi-gear' }
+    },
+    {
+        path: '/portfolio',
+        name: 'Portfolio',
+        component: () => import('../components/pages/PortfolioPage.js'),
+        meta: { title: '投资组合', icon: 'bi-wallet2' }
     },
     {
         path: '/:pathMatch(.*)*',

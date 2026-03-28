@@ -45,19 +45,53 @@ async def app_lifespan(app: FastAPI):
             delattr(app.state, "system_config_service")
 
 
+def _resolve_frontend_dir() -> Path:
+    """
+    Resolve frontend directory based on WEBUI_FRONTEND environment variable.
+    
+    Supported values:
+    - "web2.0" or "web20": Use web2.0 directory (Vue 3 + Bootstrap, no build required)
+    - "dsa-web" or default: Use apps/dsa-web/dist or static directory
+    
+    Returns:
+        Path to the frontend directory
+    """
+    frontend_type = os.environ.get("WEBUI_FRONTEND", "dsa-web").lower().strip()
+    project_root = Path(__file__).parent.parent
+    
+    if frontend_type in ("web2.0", "web20"):
+        web2_dir = project_root / "web2.0"
+        if web2_dir.exists() and (web2_dir / "index.html").exists():
+            return web2_dir
+        else:
+            logging.getLogger(__name__).warning(
+                f"WEBUI_FRONTEND=web2.0 but web2.0 directory not found or missing index.html, "
+                f"falling back to dsa-web"
+            )
+    
+    static_dir = project_root / "static"
+    if static_dir.exists() and (static_dir / "index.html").exists():
+        return static_dir
+    
+    apps_dist = project_root / "apps" / "dsa-web" / "dist"
+    if apps_dist.exists() and (apps_dist / "index.html").exists():
+        return apps_dist
+    
+    return project_root / "static"
+
+
 def create_app(static_dir: Optional[Path] = None) -> FastAPI:
     """
     创建并配置 FastAPI 应用实例
     
     Args:
-        static_dir: 静态文件目录路径（可选，默认为项目根目录下的 static）
+        static_dir: 静态文件目录路径（可选，默认根据 WEBUI_FRONTEND 环境变量决定）
         
     Returns:
         配置完成的 FastAPI 应用实例
     """
-    # 默认静态文件目录
     if static_dir is None:
-        static_dir = Path(__file__).parent.parent / "static"
+        static_dir = _resolve_frontend_dir()
     
     # 创建 FastAPI 实例
     app = FastAPI(
@@ -84,6 +118,8 @@ def create_app(static_dir: Optional[Path] = None) -> FastAPI:
         "http://127.0.0.1:5173",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
     ]
     
     # 从环境变量添加额外的允许来源

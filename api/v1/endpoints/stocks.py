@@ -22,6 +22,11 @@ from api.v1.schemas.stocks import (
     KLineData,
     StockHistoryResponse,
     StockQuote,
+    AddStockRequest,
+    AddStockResponse,
+    StockInfoItem,
+    StockInfoListResponse,
+    UpdateStatusRequest,
 )
 from api.v1.schemas.common import ErrorResponse
 from src.services.image_stock_extractor import (
@@ -386,4 +391,303 @@ def get_stock_history(
                 "error": "internal_error",
                 "message": f"获取历史行情失败: {str(e)}"
             }
+        )
+
+
+# ============================================================
+# 自选股/持仓管理 API
+# ============================================================
+
+@router.post(
+    "/watchlist/add",
+    response_model=AddStockResponse,
+    responses={
+        200: {"description": "添加成功"},
+        400: {"description": "参数错误", "model": ErrorResponse},
+        500: {"description": "服务器错误", "model": ErrorResponse},
+    },
+    summary="添加自选股",
+    description="添加股票到自选列表，自动获取股票名称等信息"
+)
+def add_to_watchlist(request: AddStockRequest) -> AddStockResponse:
+    """
+    添加股票到自选列表
+    
+    - 自动获取股票名称、市场等信息
+    - 如果股票已存在，更新状态为自选
+    """
+    return _add_or_update_stock(request.code, "watchlist", request.stock_type)
+
+
+@router.post(
+    "/holding/add",
+    response_model=AddStockResponse,
+    responses={
+        200: {"description": "添加成功"},
+        400: {"description": "参数错误", "model": ErrorResponse},
+        500: {"description": "服务器错误", "model": ErrorResponse},
+    },
+    summary="添加持仓股",
+    description="添加股票到持仓列表，自动获取股票名称等信息"
+)
+def add_to_holding(request: AddStockRequest) -> AddStockResponse:
+    """
+    添加股票到持仓列表
+    
+    - 自动获取股票名称、市场等信息
+    - 如果股票已存在，更新状态为持仓
+    """
+    return _add_or_update_stock(request.code, "holding", request.stock_type)
+
+
+@router.get(
+    "/watchlist",
+    response_model=StockInfoListResponse,
+    responses={500: {"model": ErrorResponse}},
+    summary="获取自选股列表",
+    description="获取当前用户的所有自选股"
+)
+def list_watchlist() -> StockInfoListResponse:
+    """获取自选股列表"""
+    return _list_stocks_by_status("watchlist")
+
+
+@router.get(
+    "/holding",
+    response_model=StockInfoListResponse,
+    responses={500: {"model": ErrorResponse}},
+    summary="获取持仓列表",
+    description="获取当前用户的所有持仓股"
+)
+def list_holding() -> StockInfoListResponse:
+    """获取持仓列表"""
+    return _list_stocks_by_status("holding")
+
+
+@router.delete(
+    "/{stock_code}",
+    response_model=AddStockResponse,
+    responses={
+        200: {"description": "删除成功"},
+        404: {"description": "股票不存在", "model": ErrorResponse},
+    },
+    summary="移除股票",
+    description="从自选/持仓列表中移除股票"
+)
+def remove_stock(stock_code: str) -> AddStockResponse:
+    """从自选/持仓列表中移除股票"""
+    from src.storage import DatabaseManager, StockInfo
+    from sqlalchemy import delete
+    
+    db = DatabaseManager.get_instance()
+    
+    try:
+        with db.get_session() as session:
+            result = session.execute(
+                delete(StockInfo).where(StockInfo.code == stock_code)
+            )
+            session.commit()
+            
+            if result.rowcount == 0:
+                raise HTTPException(
+                    status_code=404,
+                    detail={"error": "not_found", "message": f"股票 {stock_code} 不存在"}
+                )
+            
+            return AddStockResponse(
+                success=True,
+                message=f"已移除股票 {stock_code}"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"移除股票失败: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "internal_error", "message": f"移除股票失败: {str(e)}"}
+        )
+
+
+@router.put(
+    "/{stock_code}/status",
+    response_model=AddStockResponse,
+    responses={
+        200: {"description": "更新成功"},
+        400: {"description": "参数错误", "model": ErrorResponse},
+        404: {"description": "股票不存在", "model": ErrorResponse},
+    },
+    summary="更新股票状态",
+    description="切换股票状态：自选 ↔ 持仓"
+)
+def update_stock_status(stock_code: str, request: UpdateStatusRequest) -> AddStockResponse:
+    """
+    更新股票状态
+    
+    - watchlist → holding: 自选股加入持仓
+    - holding → watchlist: 持仓移到自选
+    """
+    from src.storage import DatabaseManager, StockInfo
+    from sqlalchemy import select
+    
+    if request.status not in ("watchlist", "holding"):
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "invalid_status", "message": "状态必须是 watchlist 或 holding"}
+        )
+    
+    db = DatabaseManager.get_instance()
+    
+    try:
+        with db.get_session() as session:
+            stock = session.execute(
+                select(StockInfo).where(StockInfo.code == stock_code)
+            ).scalar_one_or_none()
+            
+            if not stock:
+                raise HTTPException(
+                    status_code=404,
+                    detail={"error": "not_found", "message": f"股票 {stock_code} 不存在"}
+                )
+            
+            old_status = stock.status
+            stock.status = request.status
+            session.commit()
+            
+            status_names = {"watchlist": "自选", "holding": "持仓"}
+            
+            return AddStockResponse(
+                success=True,
+                message=f"已将 {stock.name}({stock_code}) 从{status_names.get(old_status, old_status)}移到{status_names.get(request.status, request.status)}",
+                stock=StockInfoItem(
+                    code=stock.code,
+                    name=stock.name,
+                    stock_type=stock.stock_type,
+                    status=stock.status,
+                    market=stock.market,
+                    industry=stock.industry,
+                    sector=stock.sector,
+                    created_at=stock.created_at.isoformat() if stock.created_at else None,
+                    updated_at=stock.updated_at.isoformat() if stock.updated_at else None,
+                )
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"更新股票状态失败: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "internal_error", "message": f"更新股票状态失败: {str(e)}"}
+        )
+
+
+def _add_or_update_stock(code: str, status: str, stock_type: Optional[str] = None) -> AddStockResponse:
+    """
+    添加或更新股票信息
+    
+    自动获取股票名称等信息后保存
+    """
+    from src.storage import DatabaseManager
+    
+    db = DatabaseManager.get_instance()
+    
+    try:
+        stock_name = None
+        market = "cn"
+        
+        try:
+            from data_provider.base import DataFetcherManager
+            manager = DataFetcherManager()
+            stock_name = manager.get_stock_name(code)
+        except ImportError:
+            logger.warning("DataFetcherManager 未找到，使用代码作为名称")
+        except Exception as e:
+            logger.warning(f"获取股票名称失败: {e}")
+        
+        if not stock_name:
+            stock_name = code
+        
+        final_stock_type = stock_type or "stock"
+        
+        success = db.save_stock_info(
+            code=code,
+            name=stock_name,
+            stock_type=final_stock_type,
+            status=status,
+            market=market,
+        )
+        
+        if not success:
+            raise HTTPException(
+                status_code=500,
+                detail={"error": "save_failed", "message": "保存股票信息失败"}
+            )
+        
+        stock = db.get_stock_info(code)
+        
+        return AddStockResponse(
+            success=True,
+            message=f"已添加 {stock_name}({code}) 到{'自选' if status == 'watchlist' else '持仓'}列表",
+            stock=StockInfoItem(
+                code=stock.code,
+                name=stock.name,
+                stock_type=stock.stock_type,
+                status=stock.status,
+                market=stock.market,
+                industry=stock.industry,
+                sector=stock.sector,
+                created_at=stock.created_at.isoformat() if stock.created_at else None,
+                updated_at=stock.updated_at.isoformat() if stock.updated_at else None,
+            ) if stock else None
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"添加股票失败: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "internal_error", "message": f"添加股票失败: {str(e)}"}
+        )
+
+
+def _list_stocks_by_status(status: str) -> StockInfoListResponse:
+    """按状态获取股票列表"""
+    from src.storage import DatabaseManager, StockInfo
+    from sqlalchemy import select
+    
+    db = DatabaseManager.get_instance()
+    
+    try:
+        with db.get_session() as session:
+            results = session.execute(
+                select(StockInfo)
+                .where(StockInfo.status == status)
+                .order_by(StockInfo.updated_at.desc())
+            ).scalars().all()
+            
+            items = [
+                StockInfoItem(
+                    code=stock.code,
+                    name=stock.name,
+                    stock_type=stock.stock_type,
+                    status=stock.status,
+                    market=stock.market,
+                    industry=stock.industry,
+                    sector=stock.sector,
+                    created_at=stock.created_at.isoformat() if stock.created_at else None,
+                    updated_at=stock.updated_at.isoformat() if stock.updated_at else None,
+                )
+                for stock in results
+            ]
+            
+            return StockInfoListResponse(
+                items=items,
+                total=len(items)
+            )
+            
+    except Exception as e:
+        logger.error(f"获取股票列表失败: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "internal_error", "message": f"获取股票列表失败: {str(e)}"}
         )

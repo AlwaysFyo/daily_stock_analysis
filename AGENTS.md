@@ -5,7 +5,7 @@
 ## 1. 硬规则
 
 - 遵循现有目录边界：
-  - 后端逻辑优先放在 `src/`、`data_provider/`、`api/`、`bot/`
+  - 后端逻辑优先放在 `src/`
   - 前端改动在 `apps/dsa-web/`
   - 部署与流水线改动在 `scripts/`、`.github/workflows/`、`docker/`
 - 未经明确确认，不执行 `git commit`、`git tag`、`git push`。
@@ -31,7 +31,7 @@
 
 ## 3. 验证矩阵
 
-> **CI 覆盖原则**：本项目 CI 目前仅覆盖 Python 语法检查（`py_compile`）和致命 Flake8 错误（E9/F63/F7/F82）。对这两项，若 CI 已通过，PR 描述中可直接引用 CI 结果，无需重复贴本地输出。**`./scripts/ci_gate.sh` 不在 CI 覆盖范围内**；若该 gate 未执行，PR 描述须说明原因，否则缺失证据应在建议项中注明。
+> **CI 覆盖原则**：本项目 CI 目前仅覆盖 Python 语法检查（`py_compile`）和致命 Flake8 错误（E9/F63/F7/F82）。对这两项，若 CI 已通过，PR 描述中可直接引用 CI 结果，无需重复贴本地输出。**`./scripts/ci_gate.sh`** **不在 CI 覆盖范围内**；若该 gate 未执行，PR 描述须说明原因，否则缺失证据应在建议项中注明。
 
 ### Python 后端改动
 
@@ -163,3 +163,4 @@ PR 默认按以下顺序审查：
 - 自动 tag 默认不触发，只有 commit title 包含 `#patch`、`#minor`、`#major` 才会触发版本号更新。
 - 手动打 tag 必须使用 annotated tag。
 - 用户可见变更优先通过 PR 合入，并补齐 label 与验证说明。
+

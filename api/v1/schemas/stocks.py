@@ -109,3 +109,46 @@ class StockHistoryResponse(BaseModel):
                 "data": []
             }
         }
+
+
+class AddStockRequest(BaseModel):
+    """添加股票请求"""
+    
+    code: str = Field(..., description="股票代码")
+    status: str = Field("watchlist", description="状态: watchlist(自选) / holding(持仓)")
+    stock_type: Optional[str] = Field(None, description="股票类型: stock/etf/index (可选，自动获取)")
+
+
+class StockInfoItem(BaseModel):
+    """股票信息项"""
+    
+    code: str = Field(..., description="股票代码")
+    name: str = Field(..., description="股票名称")
+    stock_type: str = Field(..., description="股票类型: stock/etf/index")
+    status: str = Field(..., description="状态: watchlist/holding")
+    market: Optional[str] = Field(None, description="市场: cn/hk/us")
+    industry: Optional[str] = Field(None, description="所属行业")
+    sector: Optional[str] = Field(None, description="所属板块")
+    created_at: Optional[str] = Field(None, description="创建时间")
+    updated_at: Optional[str] = Field(None, description="更新时间")
+
+
+class StockInfoListResponse(BaseModel):
+    """股票信息列表响应"""
+    
+    items: List[StockInfoItem] = Field(default_factory=list, description="股票列表")
+    total: int = Field(..., description="总数")
+
+
+class AddStockResponse(BaseModel):
+    """添加股票响应"""
+    
+    success: bool = Field(..., description="是否成功")
+    message: str = Field(..., description="消息")
+    stock: Optional[StockInfoItem] = Field(None, description="股票信息")
+
+
+class UpdateStatusRequest(BaseModel):
+    """更新股票状态请求"""
+    
+    status: str = Field(..., description="目标状态: watchlist(自选) / holding(持仓)")

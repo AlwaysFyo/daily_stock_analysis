@@ -2,10 +2,21 @@
  * API Configuration
  */
 
-// API Base URL - use relative path for same-origin requests
-const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? 'http://127.0.0.1:8000'
-    : '';
+// API Base URL - use relative path for same-origin requests when served by FastAPI
+// When frontend is served by FastAPI (same origin), use empty string for relative URLs
+// When frontend is served separately (dev mode), use explicit backend URL
+const API_BASE_URL = (() => {
+    const hostname = window.location.hostname;
+    const port = window.location.port;
+    
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        if (port === '8000' || port === '') {
+            return '';
+        }
+        return 'http://127.0.0.1:8000';
+    }
+    return '';
+})();
 
 // Axios instance configuration
 const apiConfig = {
@@ -35,8 +46,15 @@ const endpoints = {
     // Stocks
     stocks: {
         extractFromImage: '/api/v1/stocks/extract-from-image',
+        parseImport: '/api/v1/stocks/parse-import',
         quote: (code) => `/api/v1/stocks/${code}/quote`,
         history: (code) => `/api/v1/stocks/${code}/history`,
+        watchlist: '/api/v1/stocks/watchlist',
+        watchlistAdd: '/api/v1/stocks/watchlist/add',
+        holding: '/api/v1/stocks/holding',
+        holdingAdd: '/api/v1/stocks/holding/add',
+        stock: (code) => `/api/v1/stocks/${code}`,
+        stockStatus: (code) => `/api/v1/stocks/${code}/status`,
     },
     // Auth
     auth: {

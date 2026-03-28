@@ -58,7 +58,9 @@ export default {
 
         const navItems = [
             { path: '/', name: 'Overview', label: '概览', icon: 'bi-grid' },
-            { path: '/watchlist', name: 'Watchlist', label: '模型策略', icon: 'bi-view-list' },
+            { path: '/chat', name: 'Chat', label: 'Agent对话', icon: 'bi-chat-dots' },
+            { path: '/watchlist', name: 'Watchlist', label: '自选/持仓', icon: 'bi-view-list' },
+            { path: '/portfolio', name: 'Portfolio', label: '投资组合', icon: 'bi-wallet2' },
             { path: '/tasks', name: 'Tasks', label: '任务中心', icon: 'bi-activity' },
             { path: '/settings', name: 'Settings', label: '设置', icon: 'bi-gear' },
         ];
