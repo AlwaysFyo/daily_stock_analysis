@@ -119,6 +119,64 @@ class AddStockRequest(BaseModel):
     stock_type: Optional[str] = Field(None, description="股票类型: stock/etf/index (可选，自动获取)")
 
 
+class DailyQuote(BaseModel):
+    """收盘行情数据"""
+    
+    date: str = Field(..., description="交易日期")
+    close: float = Field(..., description="收盘价")
+    open: Optional[float] = Field(None, description="开盘价")
+    high: Optional[float] = Field(None, description="最高价")
+    low: Optional[float] = Field(None, description="最低价")
+    volume: Optional[int] = Field(None, description="成交量（股）")
+    amount: Optional[float] = Field(None, description="成交额（元）")
+    pct_chg: Optional[float] = Field(None, description="涨跌幅 (%)")
+    prev_close: Optional[float] = Field(None, description="昨收价")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "date": "2026-03-27",
+                "close": 1523.60,
+                "open": 1510.00,
+                "high": 1530.00,
+                "low": 1505.00,
+                "volume": 2850000,
+                "amount": 4325000000,
+                "pct_chg": 1.25,
+                "prev_close": 1504.80
+            }
+        }
+
+
+class AnalysisSummary(BaseModel):
+    """分析结果摘要"""
+    
+    score: int = Field(..., description="情绪评分 (0-100)")
+    advice: str = Field(..., description="操作建议: 买入/卖出/观望")
+    trend: str = Field(..., description="趋势预测")
+    analysis_id: int = Field(..., description="分析记录 ID")
+    analyzed_at: str = Field(..., description="分析时间")
+    ideal_buy: Optional[float] = Field(None, description="理想买入价")
+    secondary_buy: Optional[float] = Field(None, description="次级买入价")
+    stop_loss: Optional[float] = Field(None, description="止损价")
+    take_profit: Optional[float] = Field(None, description="止盈价")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "score": 85,
+                "advice": "买入",
+                "trend": "震荡上行",
+                "analysis_id": 12345,
+                "analyzed_at": "2026-03-27T10:30:00",
+                "ideal_buy": 180.0,
+                "secondary_buy": 175.0,
+                "stop_loss": 170.0,
+                "take_profit": 200.0,
+            }
+        }
+
+
 class StockInfoItem(BaseModel):
     """股票信息项"""
     
@@ -131,6 +189,8 @@ class StockInfoItem(BaseModel):
     sector: Optional[str] = Field(None, description="所属板块")
     created_at: Optional[str] = Field(None, description="创建时间")
     updated_at: Optional[str] = Field(None, description="更新时间")
+    quote: Optional[DailyQuote] = Field(None, description="收盘行情")
+    analysis: Optional[AnalysisSummary] = Field(None, description="当日分析结果")
 
 
 class StockInfoListResponse(BaseModel):
@@ -138,6 +198,7 @@ class StockInfoListResponse(BaseModel):
     
     items: List[StockInfoItem] = Field(default_factory=list, description="股票列表")
     total: int = Field(..., description="总数")
+    target_date: Optional[str] = Field(None, description="目标交易日 (YYYY-MM-DD)")
 
 
 class AddStockResponse(BaseModel):

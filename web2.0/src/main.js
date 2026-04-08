@@ -3,7 +3,7 @@
  * Vue 3 + Bootstrap 5 + Vue Router 4
  */
 
-const { createApp } = Vue;
+const { createApp, computed } = Vue;
 
 // Import components
 import Navbar from './components/layout/Navbar.js';
@@ -14,6 +14,9 @@ import router from './router/index.js';
 // Import API (initializes axios interceptors)
 import './api/index.js';
 
+// Import store
+import appStore from './stores/appStore.js';
+
 // Initialize smart scrollbar manager
 import { getScrollbarManager } from './utils/scrollbarManager.js';
 
@@ -23,6 +26,25 @@ const App = {
 
     components: {
         Navbar,
+    },
+
+    setup() {
+        const toasts = computed(() => appStore.state.toasts);
+        const getToastIcon = (type) => {
+            const icons = {
+                success: 'bi-check-circle-fill',
+                error: 'bi-x-circle-fill',
+                warning: 'bi-exclamation-triangle-fill',
+                info: 'bi-info-circle-fill',
+            };
+            return icons[type] || icons.info;
+        };
+
+        return {
+            toasts,
+            getToastIcon,
+            removeToast: (id) => appStore.removeToast(id),
+        };
     },
 
     template: `
@@ -38,6 +60,24 @@ const App = {
                     </transition>
                 </router-view>
             </main>
+
+            <!-- Toast Container -->
+            <div class="toast-container">
+                <transition-group name="toast">
+                    <div
+                        v-for="toast in toasts"
+                        :key="toast.id"
+                        class="toast-item"
+                        :class="'toast-' + toast.type"
+                    >
+                        <i :class="['bi', getToastIcon(toast.type)]"></i>
+                        <span class="toast-message">{{ toast.message }}</span>
+                        <button class="toast-close" @click="removeToast(toast.id)">
+                            <i class="bi bi-x"></i>
+                        </button>
+                    </div>
+                </transition-group>
+            </div>
         </div>
     `
 };

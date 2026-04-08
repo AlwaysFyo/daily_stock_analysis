@@ -36,6 +36,7 @@ const endpoints = {
         tasks: '/api/v1/analysis/tasks',
         taskStream: '/api/v1/analysis/tasks/stream',
         status: (taskId) => `/api/v1/analysis/status/${taskId}`,
+        batchRerun: '/api/v1/analysis/batch-rerun',
     },
     // History
     history: {
@@ -55,6 +56,7 @@ const endpoints = {
         holdingAdd: '/api/v1/stocks/holding/add',
         stock: (code) => `/api/v1/stocks/${code}`,
         stockStatus: (code) => `/api/v1/stocks/${code}/status`,
+        topDecisions: '/api/v1/stocks/top-decisions',
     },
     // Auth
     auth: {
@@ -71,3 +73,4 @@ const endpoints = {
 };
 
 export { API_BASE_URL, apiConfig, endpoints };
+

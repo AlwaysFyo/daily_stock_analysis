@@ -7,6 +7,12 @@ import { analysisApi, DuplicateTaskError } from './analysis.js';
 import { apiConfig } from './config.js';
 import { historyApi } from './history.js';
 import { stocksApi } from './stocks.js';
+import { backtestApi } from './backtest.js';
+import { agentApi, agentEndpoints } from './agent.js';
+import { systemConfigApi, SystemConfigValidationError, SystemConfigConflictError } from './systemConfig.js';
+
+// Get axios from global scope (loaded via CDN)
+const axios = window.axios;
 
 // Initialize axios defaults
 axios.defaults.baseURL = apiConfig.baseURL;
@@ -34,6 +40,12 @@ export {
     analysisApi,
     DuplicateTaskError,
     historyApi,
-    stocksApi
+    stocksApi,
+    backtestApi,
+    agentApi,
+    agentEndpoints,
+    systemConfigApi,
+    SystemConfigValidationError,
+    SystemConfigConflictError
 };
 

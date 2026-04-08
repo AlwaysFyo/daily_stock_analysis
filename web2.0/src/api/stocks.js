@@ -4,6 +4,9 @@
 
 import { endpoints } from './config.js';
 
+// Get axios from global scope (loaded via CDN)
+const axios = window.axios;
+
 /**
  * Convert snake_case to camelCase
  */
@@ -160,6 +163,18 @@ export const stocksApi = {
     async updateStockStatus(stockCode, status) {
         const response = await axios.put(endpoints.stocks.stockStatus(stockCode), {
             status,
+        });
+        return toCamelCase(response.data);
+    },
+
+    /**
+     * Get top decisions (highest score stocks from watchlist + holdings)
+     * @param {number} limit - Number of stocks to return (default 3)
+     * @returns {Promise<Object>} Top decisions with items and total
+     */
+    async getTopDecisions(limit = 3) {
+        const response = await axios.get(endpoints.stocks.topDecisions, {
+            params: { limit },
         });
         return toCamelCase(response.data);
     },

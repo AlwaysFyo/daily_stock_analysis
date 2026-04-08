@@ -14,6 +14,7 @@ export const TAG_TYPES = {
         BUY: 'conclusion-buy',
         SELL: 'conclusion-sell',
         HOLD: 'conclusion-hold',
+        HOLDING: 'conclusion-holding',
     },
     // Layer 2: Indicator tags (outlined style)
     INDICATOR: {
@@ -21,6 +22,13 @@ export const TAG_TYPES = {
         NEGATIVE: 'indicator-negative',   // Red - bearish signals
         WARNING: 'indicator-warning',     // Orange - attention needed
         NEUTRAL: 'indicator-neutral',     // Gray - informational
+    },
+    // Layer 3: Trend tags (special style)
+    TREND: {
+        UP: 'trend-up',           // Uptrend
+        DOWN: 'trend-down',       // Downtrend
+        SIDEWAYS: 'trend-sideways', // Sideways/consolidation
+        NEUTRAL: 'trend-neutral',   // Neutral/unknown
     },
 };
 
@@ -30,6 +38,7 @@ const TAG_CLASSIFICATION = {
     '买入': TAG_TYPES.CONCLUSION.BUY,
     '卖出': TAG_TYPES.CONCLUSION.SELL,
     '观望': TAG_TYPES.CONCLUSION.HOLD,
+    '持有': TAG_TYPES.CONCLUSION.HOLDING,
     // Indicator mappings - Positive
     '多头排列': TAG_TYPES.INDICATOR.POSITIVE,
     '趋势向上': TAG_TYPES.INDICATOR.POSITIVE,
@@ -53,6 +62,19 @@ const TAG_CLASSIFICATION = {
     '横盘': TAG_TYPES.INDICATOR.NEUTRAL,
 };
 
+// Trend classification mapping
+const TREND_CLASSIFICATION = {
+    '上涨': TAG_TYPES.TREND.UP,
+    '上升': TAG_TYPES.TREND.UP,
+    '向上': TAG_TYPES.TREND.UP,
+    '下跌': TAG_TYPES.TREND.DOWN,
+    '下降': TAG_TYPES.TREND.DOWN,
+    '向下': TAG_TYPES.TREND.DOWN,
+    '横盘': TAG_TYPES.TREND.SIDEWAYS,
+    '震荡': TAG_TYPES.TREND.SIDEWAYS,
+    '整理': TAG_TYPES.TREND.SIDEWAYS,
+};
+
 /**
  * Get CSS class for a tag based on its label
  * @param {string} label - Tag label text
@@ -64,7 +86,7 @@ export function getTagClass(label) {
 
 /**
  * Get CSS class for conclusion tag
- * @param {string} conclusion - Conclusion text (买入/卖出/观望)
+ * @param {string} conclusion - Conclusion text (买入/卖出/观望/持有)
  * @returns {string} CSS class name
  */
 export function getConclusionClass(conclusion) {
@@ -72,8 +94,19 @@ export function getConclusionClass(conclusion) {
         '买入': TAG_TYPES.CONCLUSION.BUY,
         '卖出': TAG_TYPES.CONCLUSION.SELL,
         '观望': TAG_TYPES.CONCLUSION.HOLD,
+        '持有': TAG_TYPES.CONCLUSION.HOLDING,
     };
     return mapping[conclusion] || TAG_TYPES.INDICATOR.NEUTRAL;
+}
+
+/**
+ * Get CSS class for trend tag
+ * @param {string} trend - Trend text (上涨/下跌/横盘等)
+ * @returns {string} CSS class name
+ */
+export function getTrendClass(trend) {
+    if (!trend || trend === '-') return TAG_TYPES.TREND.NEUTRAL;
+    return TREND_CLASSIFICATION[trend] || TAG_TYPES.TREND.NEUTRAL;
 }
 
 /**

@@ -16,6 +16,9 @@ const state = reactive({
     // Error states
     error: null,
 
+    // Toast notifications
+    toasts: [],
+
     // Tasks
     activeTasks: [],
 
@@ -112,6 +115,22 @@ const actions = {
 
     updateAlerts(alerts) {
         state.alerts = { ...state.alerts, ...alerts };
+    },
+
+    showToast(message, type = 'info', duration = 3000) {
+        const id = Date.now() + Math.random();
+        const toast = { id, message, type };
+        state.toasts.push(toast);
+        setTimeout(() => {
+            this.removeToast(id);
+        }, duration);
+    },
+
+    removeToast(id) {
+        const index = state.toasts.findIndex(t => t.id === id);
+        if (index >= 0) {
+            state.toasts.splice(index, 1);
+        }
     },
 };
 

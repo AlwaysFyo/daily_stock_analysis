@@ -680,6 +680,8 @@ class Config:
     # === 基本面聚合开关与降级保护 ===
     # 全局总开关；关闭时返回 not_supported 并保持主流程无变化
     enable_fundamental_pipeline: bool = True
+    # 投资组合功能开关；关闭时前端隐藏投资组合页面
+    enable_portfolio_feature: bool = True
     # 基本面阶段总预算（秒）
     fundamental_stage_timeout_seconds: float = 1.5
     # 单能力源调用超时（秒）
@@ -1296,6 +1298,7 @@ class Config:
             realtime_cache_ttl=parse_env_int(os.getenv('REALTIME_CACHE_TTL'), 600, field_name='REALTIME_CACHE_TTL', minimum=0),
             circuit_breaker_cooldown=parse_env_int(os.getenv('CIRCUIT_BREAKER_COOLDOWN'), 300, field_name='CIRCUIT_BREAKER_COOLDOWN', minimum=0),
             enable_fundamental_pipeline=os.getenv('ENABLE_FUNDAMENTAL_PIPELINE', 'true').lower() == 'true',
+            enable_portfolio_feature=os.getenv('ENABLE_PORTFOLIO_FEATURE', 'true').lower() == 'true',
             fundamental_stage_timeout_seconds=parse_env_float(
                 os.getenv('FUNDAMENTAL_STAGE_TIMEOUT_SECONDS'),
                 1.5,

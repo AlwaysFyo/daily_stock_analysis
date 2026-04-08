@@ -4,6 +4,33 @@
 
 const { createRouter, createWebHistory } = VueRouter;
 
+// Feature flags cache
+let featureFlags = {
+    enablePortfolioFeature: true
+};
+
+// Fetch feature flags from backend
+async function fetchFeatureFlags() {
+    try {
+        const response = await axios.get('/api/v1/system/config');
+        if (response.data && response.data.items) {
+            const portfolioItem = response.data.items.find(
+                item => item.key === 'ENABLE_PORTFOLIO_FEATURE'
+            );
+            if (portfolioItem) {
+                const rawValue = portfolioItem.value;
+                if (rawValue !== undefined && rawValue !== '') {
+                    featureFlags.enablePortfolioFeature = rawValue === 'true';
+                } else if (portfolioItem.schema && portfolioItem.schema.default_value) {
+                    featureFlags.enablePortfolioFeature = portfolioItem.schema.default_value === 'true';
+                }
+            }
+        }
+    } catch (error) {
+        console.warn('Failed to fetch feature flags:', error);
+    }
+}
+
 // Route definitions
 const routes = [
     {
@@ -46,7 +73,7 @@ const routes = [
         path: '/portfolio',
         name: 'Portfolio',
         component: () => import('../components/pages/PortfolioPage.js'),
-        meta: { title: '投资组合', icon: 'bi-wallet2' }
+        meta: { title: '投资组合', icon: 'bi-wallet2', feature: 'portfolio' }
     },
     {
         path: '/:pathMatch(.*)*',
@@ -72,7 +99,18 @@ router.beforeEach((to, from, next) => {
     document.title = to.meta.title
         ? `${to.meta.title} - Daily Stock Analysis`
         : 'Daily Stock Analysis';
+
+    // Check feature flags
+    if (to.meta.feature === 'portfolio' && !featureFlags.enablePortfolioFeature) {
+        next({ path: '/' });
+        return;
+    }
+
     next();
 });
 
+// Initialize feature flags on app start
+fetchFeatureFlags();
+
+export { featureFlags, fetchFeatureFlags };
 export default router;

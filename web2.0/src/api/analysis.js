@@ -4,6 +4,9 @@
 
 import { API_BASE_URL, endpoints } from './config.js';
 
+// Get axios from global scope (loaded via CDN)
+const axios = window.axios;
+
 /**
  * Convert snake_case to camelCase
  */
@@ -100,6 +103,27 @@ export const analysisApi = {
      */
     getTaskStreamUrl() {
         return `${API_BASE_URL}${endpoints.analysis.taskStream}`;
+    },
+
+    /**
+     * Batch rerun analysis
+     * @param {Object} data - Batch rerun request data
+     * @param {string} data.scope - Scope: 'all' | 'watchlist' | 'holdings'
+     * @param {string} [data.reportType='detailed'] - Report type
+     * @param {boolean} [data.forceRefresh=true] - Force refresh
+     * @param {boolean} [data.notify=false] - Send notification
+     * @returns {Promise<Object>} Batch rerun response
+     */
+    async batchRerun(data) {
+        const requestData = {
+            scope: data.scope,
+            report_type: data.reportType || 'detailed',
+            force_refresh: data.forceRefresh !== false,
+            notify: data.notify || false,
+        };
+
+        const response = await axios.post(endpoints.analysis.batchRerun, requestData);
+        return toCamelCase(response.data);
     },
 };
 

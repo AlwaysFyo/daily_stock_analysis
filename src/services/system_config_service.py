@@ -6,6 +6,7 @@ from __future__ import annotations
 import io
 import logging
 import json
+import os
 import re
 import time
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
@@ -154,6 +155,12 @@ class SystemConfigService:
         config_map = self._build_display_config_map(self._manager.read_config_map())
         registered_keys = set(get_registered_field_keys())
         all_keys = set(config_map.keys()) | registered_keys
+
+        # Override with environment variables (highest priority)
+        for key in all_keys:
+            env_value = os.environ.get(key)
+            if env_value is not None:
+                config_map[key] = env_value
 
         category_orders = {
             item["category"]: item["display_order"]

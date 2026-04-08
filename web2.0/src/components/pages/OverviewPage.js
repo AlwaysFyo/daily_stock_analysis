@@ -2,8 +2,9 @@
  * Overview Page Component - 概览页面
  */
 
-const { ref, computed } = Vue;
+const { ref, computed, onMounted } = Vue;
 import { analysisApi, DuplicateTaskError } from '../../api/analysis.js';
+import { stocksApi } from '../../api/stocks.js';
 import appStore from '../../stores/appStore.js';
 import { getConclusionClass, getTagClass } from '../../utils/tagStyles.js';
 import BottomDrawerModal from '../common/BottomDrawerModal.js';
@@ -22,8 +23,6 @@ export default {
         const isAnalyzing = ref(false);
         const inputError = ref('');
         const duplicateError = ref('');
-        const showDetailModal = ref(false);
-        const modalStock = ref(null);
 
         const showBottomDrawer = ref(false);
         const drawerStock = ref(null);
@@ -32,48 +31,45 @@ export default {
         const isRunning = ref(false);
         const runningMode = ref(null);
 
-        // Mock data for stock cards (matching design)
-        const decisionCards = ref([
-            {
-                code: '600519',
-                name: '贵州茅台',
-                conclusion: '观望',
-                score: 78,
-                buyPrice: 1620,
-                stopLoss: 1578,
-                target: 1750,
-                tags: [
-                    { label: '乖离>5%', icon: 'bi-arrow-down-up' },
-                    { label: '多头排列', icon: 'bi-graph-up-arrow' },
-                ],
-            },
-            {
-                code: '000858',
-                name: '五粮液',
-                conclusion: '卖出',
-                score: 61,
-                buyPrice: 132,
-                stopLoss: 128,
-                target: 148,
-                tags: [
-                    { label: '跌破MA20', icon: 'bi-arrow-down-up' },
-                    { label: '放量下跌', icon: 'bi-arrow-down' },
-                ],
-            },
-            {
-                code: '300750',
-                name: '宁德时代',
-                conclusion: '买入',
-                score: 84,
-                buyPrice: 182,
-                stopLoss: 176,
-                target: 205,
-                tags: [
-                    { label: '放量突破', icon: 'bi-graph-up-arrow' },
-                    { label: '趋势向上', icon: 'bi-trending-up' },
-                ],
-            },
-        ]);
+        // TopN decision cards from API
+        const decisionCards = ref([]);
+        const isLoadingDecisions = ref(false);
+
+        // Load top decisions from API
+        const loadTopDecisions = async () => {
+            isLoadingDecisions.value = true;
+            try {
+                const response = await stocksApi.getTopDecisions(3);
+                if (response.items && response.items.length > 0) {
+                    decisionCards.value = response.items.map(item => ({
+                        code: item.code,
+                        name: item.name,
+                        conclusion: item.analysis?.advice || '-',
+                        score: item.analysis?.score || 0,
+                        trend: item.analysis?.trend || '-',
+                        analysisId: item.analysis?.analysisId,
+                        analyzedAt: item.analysis?.analyzedAt,
+                        status: item.status,
+                        buyPrice: item.analysis?.idealBuy,
+                        secondaryBuy: item.analysis?.secondaryBuy,
+                        stopLoss: item.analysis?.stopLoss,
+                        target: item.analysis?.takeProfit,
+                    }));
+                } else {
+                    decisionCards.value = [];
+                }
+            } catch (err) {
+                console.error('加载 TopN 决策失败:', err);
+                decisionCards.value = [];
+            } finally {
+                isLoadingDecisions.value = false;
+            }
+        };
+
+        // Load data on mount
+        onMounted(() => {
+            loadTopDecisions();
+        });
 
         // Market data from store
         const marketIndices = computed(() => appStore.state.marketIndices);
@@ -85,7 +81,6 @@ export default {
             if (!code || code.trim() === '') {
                 return { valid: false, message: '请输入股票代码' };
             }
-            // Basic validation for Chinese stock codes
             const cleanCode = code.trim().toUpperCase();
             if (!/^[0-9]{6}$/.test(cleanCode) && !/^[A-Z]{1,5}$/.test(cleanCode)) {
                 return { valid: false, message: '股票代码格式不正确' };
@@ -93,15 +88,46 @@ export default {
             return { valid: true, normalized: cleanCode };
         };
 
+        const validateMultipleStockCodes = (input) => {
+            if (!input || input.trim() === '') {
+                return { valid: false, message: '请输入股票代码' };
+            }
+            const codes = input.trim().split(/\s+/).filter(c => c.length > 0);
+            if (codes.length === 0) {
+                return { valid: false, message: '请输入股票代码' };
+            }
+            const validCodes = [];
+            const invalidCodes = [];
+            for (const code of codes) {
+                const cleanCode = code.trim().toUpperCase();
+                if (/^[0-9]{6}$/.test(cleanCode) || /^[A-Z]{1,5}$/.test(cleanCode)) {
+                    if (!validCodes.includes(cleanCode)) {
+                        validCodes.push(cleanCode);
+                    }
+                } else {
+                    invalidCodes.push(code);
+                }
+            }
+            if (invalidCodes.length > 0) {
+                return { 
+                    valid: false, 
+                    message: `股票代码格式不正确: ${invalidCodes.join(', ')}` 
+                };
+            }
+            if (validCodes.length === 0) {
+                return { valid: false, message: '请输入有效的股票代码' };
+            }
+            return { valid: true, codes: validCodes };
+        };
+
         const handleAnalyze = async () => {
-            // If search box is empty, focus it and show hint
             if (!stockCode.value || stockCode.value.trim() === '') {
                 inputError.value = '请输入股票代码';
                 stockCodeInput.value?.focus();
                 return;
             }
 
-            const validation = validateStockCode(stockCode.value);
+            const validation = validateMultipleStockCodes(stockCode.value);
             if (!validation.valid) {
                 inputError.value = validation.message;
                 return;
@@ -111,32 +137,48 @@ export default {
             duplicateError.value = '';
             isAnalyzing.value = true;
 
-            try {
-                const response = await analysisApi.analyzeAsync({
-                    stockCode: validation.normalized,
-                    reportType: 'detailed',
-                });
+            const codes = validation.codes;
+            const duplicateStocks = [];
+            const failedStocks = [];
+            let successCount = 0;
 
-                // Clear input on success
-                stockCode.value = '';
+            for (const code of codes) {
+                try {
+                    const response = await analysisApi.analyzeAsync({
+                        stockCode: code,
+                        reportType: 'detailed',
+                    });
 
-                // Add task to store
-                appStore.addTask({
-                    taskId: response.taskId,
-                    stockCode: validation.normalized,
-                    status: 'pending',
-                    progress: 0,
-                });
-
-            } catch (err) {
-                if (err instanceof DuplicateTaskError) {
-                    duplicateError.value = `股票 ${err.stockCode} 正在分析中，请等待完成`;
-                } else {
-                    inputError.value = err.message || '分析失败';
+                    appStore.addTask({
+                        taskId: response.taskId,
+                        stockCode: code,
+                        status: 'pending',
+                        progress: 0,
+                    });
+                    successCount++;
+                } catch (err) {
+                    if (err instanceof DuplicateTaskError) {
+                        duplicateStocks.push(err.stockCode);
+                    } else {
+                        failedStocks.push(code);
+                    }
                 }
-            } finally {
-                isAnalyzing.value = false;
             }
+
+            if (successCount > 0) {
+                stockCode.value = '';
+                appStore.showToast(`已开始分析 ${successCount} 只股票`, 'info');
+            }
+
+            if (duplicateStocks.length > 0) {
+                duplicateError.value = `股票 ${duplicateStocks.join(', ')} 正在分析中，请等待完成`;
+            }
+
+            if (failedStocks.length > 0) {
+                inputError.value = `股票 ${failedStocks.join(', ')} 分析失败`;
+            }
+
+            isAnalyzing.value = false;
         };
 
         const handleKeyDown = (e) => {
@@ -152,16 +194,6 @@ export default {
 
         const handleStockClick = (stock) => {
             openBottomDrawer(stock);
-        };
-
-        const openDetailModal = (stock) => {
-            modalStock.value = stock;
-            showDetailModal.value = true;
-        };
-
-        const closeDetailModal = () => {
-            showDetailModal.value = false;
-            modalStock.value = null;
         };
 
         const openBottomDrawer = (stock) => {
@@ -182,8 +214,28 @@ export default {
             runningMode.value = 'all';
             
             try {
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                const response = await analysisApi.batchRerun({
+                    scope: 'all',
+                    reportType: 'detailed',
+                    forceRefresh: true,
+                    notify: false,
+                });
+                
+                appStore.showToast(response.message || '已开始重跑今日全量分析', 'info');
+                
+                if (response.accepted && response.accepted.length > 0) {
+                    response.accepted.forEach(task => {
+                        appStore.addTask({
+                            taskId: task.taskId,
+                            stockCode: task.stockCode,
+                            status: 'pending',
+                            progress: 0,
+                        });
+                    });
+                }
             } catch (err) {
+                console.error('批量重跑失败:', err);
+                appStore.showToast('批量重跑失败: ' + (err.message || '未知错误'), 'error');
             } finally {
                 isRunning.value = false;
                 runningMode.value = null;
@@ -198,8 +250,28 @@ export default {
             runningMode.value = 'watchlist';
             
             try {
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                const response = await analysisApi.batchRerun({
+                    scope: 'watchlist',
+                    reportType: 'detailed',
+                    forceRefresh: true,
+                    notify: false,
+                });
+                
+                appStore.showToast(response.message || '已开始分析自选股', 'info');
+                
+                if (response.accepted && response.accepted.length > 0) {
+                    response.accepted.forEach(task => {
+                        appStore.addTask({
+                            taskId: task.taskId,
+                            stockCode: task.stockCode,
+                            status: 'pending',
+                            progress: 0,
+                        });
+                    });
+                }
             } catch (err) {
+                console.error('自选股分析失败:', err);
+                appStore.showToast('自选股分析失败: ' + (err.message || '未知错误'), 'error');
             } finally {
                 isRunning.value = false;
                 runningMode.value = null;
@@ -214,8 +286,28 @@ export default {
             runningMode.value = 'holdings';
             
             try {
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                const response = await analysisApi.batchRerun({
+                    scope: 'holdings',
+                    reportType: 'detailed',
+                    forceRefresh: true,
+                    notify: false,
+                });
+                
+                appStore.showToast(response.message || '已开始分析持仓股', 'info');
+                
+                if (response.accepted && response.accepted.length > 0) {
+                    response.accepted.forEach(task => {
+                        appStore.addTask({
+                            taskId: task.taskId,
+                            stockCode: task.stockCode,
+                            status: 'pending',
+                            progress: 0,
+                        });
+                    });
+                }
             } catch (err) {
+                console.error('持仓股分析失败:', err);
+                appStore.showToast('持仓股分析失败: ' + (err.message || '未知错误'), 'error');
             } finally {
                 isRunning.value = false;
                 runningMode.value = null;
@@ -231,22 +323,19 @@ export default {
             inputError,
             duplicateError,
             decisionCards,
+            isLoadingDecisions,
             marketIndices,
             marketOverview,
             alerts,
             selectedRunMode,
             isRunning,
             runningMode,
-            showDetailModal,
-            modalStock,
             showBottomDrawer,
             drawerStock,
             handleAnalyze,
             handleKeyDown,
             clearErrors,
             handleStockClick,
-            openDetailModal,
-            closeDetailModal,
             openBottomDrawer,
             closeBottomDrawer,
             handleRunAll,
@@ -254,6 +343,7 @@ export default {
             handleRunHoldings,
             getTagClass,
             getConclusionClass,
+            loadTopDecisions,
         };
     },
 
@@ -330,13 +420,13 @@ export default {
                                             @keydown="handleKeyDown"
                                             @blur="clearErrors"
                                             @input="clearErrors"
-                                            placeholder="输入股票代码，如 600519"
+                                            placeholder="输入股票代码，多个用空格分隔，如 600900 600941"
                                             :disabled="isAnalyzing"
                                             aria-label="股票代码"
                                             aria-describedby="stock-code-help"
                                         >
                                     </div>
-                                    <div id="stock-code-help" class="visually-hidden">请输入6位数字股票代码，例如600519</div>
+                                    <div id="stock-code-help" class="visually-hidden">请输入股票代码，多个代码用空格分隔，例如 600900 600941</div>
                                     <div class="error-container">
                                         <div v-if="inputError" class="error-text">
                                             {{ inputError }}
@@ -355,7 +445,7 @@ export default {
                                 >
                                     <span class="btn-content">
                                         <i class="bi bi-play-fill" aria-hidden="true"></i>
-                                        <span>运行</span>
+                                        <span>分析</span>
                                     </span>
                                 </button>
                             </div>
@@ -414,7 +504,7 @@ export default {
                     <div class="card overview-card">
                         <div class="card-header overview-card-header">
                             <i class="bi bi-star-fill me-2"></i>
-                            最新决策（自选 Top）
+                            最新决策（TopN）
                         </div>
                         <div class="card-body overview-card-body">
                             <div class="d-flex flex-column gap-3">
@@ -451,7 +541,7 @@ export default {
                                     <!-- Divider -->
                                     <div class="stock-divider"></div>
 
-                                    <!-- Row 2: Prices + Tags -->
+                                    <!-- Row 2: Prices + Trend -->
                                     <div class="d-flex justify-content-between align-items-center">
                                         <div class="stock-prices-compact">
                                             <div class="price-pill">
@@ -467,15 +557,10 @@ export default {
                                                 <span class="price-value price-target">{{ stock.target }}</span>
                                             </div>
                                         </div>
-                                        <div class="stock-tags">
-                                            <span
-                                                v-for="(tag, index) in stock.tags"
-                                                :key="index"
-                                                class="tag"
-                                                :class="getTagClass(tag.label)"
-                                            >
-                                                <i :class="tag.icon"></i>
-                                                {{ tag.label }}
+                                        <div class="stock-tags" v-if="stock.trend">
+                                            <span class="tag tag-info">
+                                                <i class="bi bi-graph-up-arrow"></i>
+                                                {{ stock.trend }}
                                             </span>
                                         </div>
                                     </div>
@@ -577,13 +662,6 @@ export default {
                     </div>
                 </div>
             </div>
-
-            <!-- Stock Detail Modal -->
-            <stock-detail-modal
-                :show="showDetailModal"
-                :stock="modalStock"
-                @close="closeDetailModal"
-            ></stock-detail-modal>
 
             <!-- Bottom Drawer Modal -->
             <bottom-drawer-modal

@@ -437,6 +437,49 @@ class AnalysisTaskQueue:
             task = self._tasks.get(task_id)
             return task.copy() if task else None
     
+    def update_task_progress(
+        self,
+        task_id: str,
+        progress: int,
+        message: Optional[str] = None,
+    ) -> bool:
+        """
+        更新任务进度
+        
+        进度以整10更新，可以跳多个（如 10% -> 30% -> 60% -> 80% -> 100%）
+        
+        Args:
+            task_id: 任务 ID
+            progress: 进度值 (0-100)
+            message: 进度消息（可选）
+            
+        Returns:
+            是否更新成功
+        """
+        # 进度取整到最近的10
+        normalized_progress = min(100, max(0, (progress // 10) * 10))
+        
+        with self._data_lock:
+            task = self._tasks.get(task_id)
+            if not task:
+                return False
+            
+            # 只有进度增加时才更新
+            if normalized_progress <= task.progress:
+                return True
+            
+            task.progress = normalized_progress
+            if message:
+                task.message = message
+            
+            task_data = task.to_dict()
+        
+        # 广播进度更新事件
+        self._broadcast_event("task_progress", task_data)
+        logger.debug(f"[TaskQueue] 任务进度更新: {task_id} -> {normalized_progress}%")
+        
+        return True
+    
     def list_pending_tasks(self) -> List[TaskInfo]:
         """
         获取所有进行中的任务（pending + processing）
@@ -521,6 +564,10 @@ class AnalysisTaskQueue:
         
         self._broadcast_event("task_started", task.to_dict())
         
+        # 定义进度回调函数
+        def progress_callback(progress: int, message: str):
+            self.update_task_progress(task_id, progress, message)
+        
         try:
             # 导入分析服务（延迟导入避免循环依赖）
             from src.services.analysis_service import AnalysisService
@@ -533,6 +580,7 @@ class AnalysisTaskQueue:
                 force_refresh=force_refresh,
                 query_id=task_id,
                 send_notification=notify,
+                progress_callback=progress_callback,
             )
             
             if result:
@@ -554,6 +602,9 @@ class AnalysisTaskQueue:
                 
                 self._broadcast_event("task_completed", task.to_dict())
                 logger.info(f"[TaskQueue] 任务完成: {task_id} ({stock_code})")
+                
+                # 持久化到数据库
+                self._persist_task_record(task)
                 
                 # 清理过期任务
                 self._cleanup_old_tasks()
@@ -582,10 +633,64 @@ class AnalysisTaskQueue:
             
             self._broadcast_event("task_failed", task.to_dict())
             
+            # 持久化到数据库
+            self._persist_task_record(task)
+            
             # 清理过期任务
             self._cleanup_old_tasks()
             
             return None
+    
+    def _persist_task_record(self, task: TaskInfo) -> bool:
+        """
+        持久化任务记录到数据库（仅保存最终状态）
+        
+        Args:
+            task: 任务信息对象
+            
+        Returns:
+            是否保存成功
+        """
+        if task.status not in (TaskStatus.COMPLETED, TaskStatus.FAILED):
+            return False
+        
+        try:
+            from src.storage import get_db
+            
+            db = get_db()
+            return db.save_task_record(
+                task_id=task.task_id,
+                stock_code=task.stock_code,
+                stock_name=task.stock_name,
+                status=task.status.value,
+                report_type=task.report_type,
+                error=task.error,
+                created_at=task.created_at,
+                completed_at=task.completed_at,
+            )
+        except Exception as e:
+            logger.warning(f"[TaskQueue] 持久化任务记录失败: {task.task_id}, 错误: {e}")
+            return False
+    
+    def get_historical_tasks(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        从数据库加载历史任务记录
+        
+        Args:
+            limit: 返回数量限制
+            
+        Returns:
+            历史任务列表
+        """
+        try:
+            from src.storage import get_db
+            
+            db = get_db()
+            records = db.get_task_records(limit=limit)
+            return [r.to_dict() for r in records]
+        except Exception as e:
+            logger.warning(f"[TaskQueue] 加载历史任务失败: {e}")
+            return []
     
     def _cleanup_old_tasks(self) -> int:
         """

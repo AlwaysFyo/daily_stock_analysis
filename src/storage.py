@@ -704,6 +704,44 @@ class LLMUsage(Base):
     called_at = Column(DateTime, default=datetime.now, index=True)
 
 
+class TaskRecord(Base):
+    """
+    任务记录表 - 持久化存储任务最终状态
+    
+    仅保存已完成(completed/failed)的任务，运行中的任务状态在内存中维护
+    """
+
+    __tablename__ = "task_records"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_id = Column(String(64), nullable=False, unique=True, index=True)
+    stock_code = Column(String(16), nullable=False, index=True)
+    stock_name = Column(String(50))
+    status = Column(String(16), nullable=False, index=True)  # completed/failed
+    report_type = Column(String(16), default="detailed")
+    error = Column(Text)
+    created_at = Column(DateTime, nullable=False, index=True)
+    completed_at = Column(DateTime, index=True)
+    
+    __table_args__ = (
+        Index("ix_task_records_status_completed", "status", "completed_at"),
+    )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "task_id": self.task_id,
+            "stock_code": self.stock_code,
+            "stock_name": self.stock_name,
+            "status": self.status,
+            "report_type": self.report_type,
+            "error": self.error,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "progress": 100 if self.status == "completed" else 0,
+            "message": "分析完成" if self.status == "completed" else f"分析失败: {self.error}" if self.error else "分析失败",
+        }
+
+
 class DatabaseManager:
     """
     数据库管理器 - 单例模式
@@ -1492,6 +1530,43 @@ class DatabaseManager:
     def get_recent_news(
         self, code: str, days: int = 7, limit: int = 20
     ) -> List[NewsIntel]:
+        """
+        获取指定股票代码的最近新闻情报。
+
+        Args:
+            code: 股票代码
+            days: 查询最近几天的新闻
+            limit: 返回数量限制
+
+        Returns:
+            新闻情报列表
+        """
+        if not code:
+            return []
+
+        with self.get_session() as session:
+            try:
+                cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+                rows = session.execute(
+                    select(NewsIntel)
+                    .where(
+                        and_(
+                            NewsIntel.code == code,
+                            NewsIntel.published_at >= cutoff,
+                        )
+                    )
+                    .order_by(desc(NewsIntel.published_at))
+                    .limit(limit)
+                ).scalars().all()
+                return list(rows)
+            except Exception as e:
+                logger.debug(
+                    "获取最近新闻失败（fail-open）: code=%s err=%s",
+                    code,
+                    e,
+                )
+                return []
+
     def get_latest_fundamental_snapshot(
         self,
         query_id: str,
@@ -2521,6 +2596,135 @@ class DatabaseManager:
                 for r in by_model_rows
             ],
         }
+
+    # ------------------------------------------------------------------
+    # Task record persistence
+    # ------------------------------------------------------------------
+
+    def save_task_record(
+        self,
+        task_id: str,
+        stock_code: str,
+        status: str,
+        stock_name: Optional[str] = None,
+        report_type: str = "detailed",
+        error: Optional[str] = None,
+        created_at: Optional[datetime] = None,
+        completed_at: Optional[datetime] = None,
+    ) -> bool:
+        """
+        Save a completed/failed task record to database.
+
+        Args:
+            task_id: Unique task identifier
+            stock_code: Stock code being analyzed
+            status: Task status (completed/failed)
+            stock_name: Optional stock name
+            report_type: Report type
+            error: Error message if failed
+            created_at: Task creation time
+            completed_at: Task completion time
+
+        Returns:
+            True if saved successfully
+        """
+        if status not in ("completed", "failed"):
+            logger.warning(f"Only completed/failed tasks should be persisted, got: {status}")
+            return False
+
+        try:
+            with self.get_session() as session:
+                existing = session.execute(
+                    select(TaskRecord).where(TaskRecord.task_id == task_id)
+                ).scalar_one_or_none()
+
+                if existing:
+                    existing.status = status
+                    existing.stock_name = stock_name or existing.stock_name
+                    existing.error = error
+                    existing.completed_at = completed_at or datetime.now()
+                else:
+                    record = TaskRecord(
+                        task_id=task_id,
+                        stock_code=stock_code,
+                        stock_name=stock_name,
+                        status=status,
+                        report_type=report_type,
+                        error=error,
+                        created_at=created_at or datetime.now(),
+                        completed_at=completed_at or datetime.now(),
+                    )
+                    session.add(record)
+
+                session.commit()
+                logger.debug(f"Task record saved: {task_id} ({status})")
+                return True
+
+        except Exception as e:
+            logger.error(f"Failed to save task record: {e}")
+            return False
+
+    def get_task_records(
+        self,
+        status: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[TaskRecord]:
+        """
+        Get task records from database.
+
+        Args:
+            status: Filter by status (completed/failed), None for all
+            limit: Maximum number of records to return
+
+        Returns:
+            List of TaskRecord objects
+        """
+        with self.get_session() as session:
+            query = select(TaskRecord)
+
+            if status:
+                query = query.where(TaskRecord.status == status)
+
+            query = query.order_by(desc(TaskRecord.completed_at)).limit(limit)
+            results = session.execute(query).scalars().all()
+            return list(results)
+
+    def get_task_record_by_id(self, task_id: str) -> Optional[TaskRecord]:
+        """
+        Get a single task record by task_id.
+
+        Args:
+            task_id: Task identifier
+
+        Returns:
+            TaskRecord or None
+        """
+        with self.get_session() as session:
+            return session.execute(
+                select(TaskRecord).where(TaskRecord.task_id == task_id)
+            ).scalar_one_or_none()
+
+    def delete_old_task_records(self, days: int = 30) -> int:
+        """
+        Delete task records older than specified days.
+
+        Args:
+            days: Number of days to keep
+
+        Returns:
+            Number of deleted records
+        """
+        cutoff = datetime.now() - timedelta(days=days)
+
+        with self.get_session() as session:
+            result = session.execute(
+                delete(TaskRecord).where(TaskRecord.completed_at < cutoff)
+            )
+            session.commit()
+            deleted = result.rowcount or 0
+            if deleted > 0:
+                logger.info(f"Deleted {deleted} old task records (older than {days} days)")
+            return deleted
 
 
 # 便捷函数

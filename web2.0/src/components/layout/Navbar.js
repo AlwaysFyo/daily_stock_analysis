@@ -18,8 +18,31 @@ export default {
         // Theme state: 'light' or 'dark'
         const currentTheme = ref('light');
 
+        // Feature flags from backend config
+        const enablePortfolioFeature = ref(true);
+
+        // All possible nav items
+        const allNavItems = [
+            { path: '/', name: 'Overview', label: '概览', icon: 'bi-grid' },
+            { path: '/chat', name: 'Chat', label: '问股', icon: 'bi-chat-dots' },
+            { path: '/watchlist', name: 'Watchlist', label: '自选/持仓', icon: 'bi-view-list' },
+            { path: '/portfolio', name: 'Portfolio', label: '投资组合', icon: 'bi-wallet2', feature: 'portfolio' },
+            { path: '/tasks', name: 'Tasks', label: '任务中心', icon: 'bi-activity' },
+            { path: '/settings', name: 'Settings', label: '设置', icon: 'bi-gear' },
+        ];
+
+        // Filtered nav items based on feature flags
+        const navItems = computed(() => {
+            return allNavItems.filter(item => {
+                if (item.feature === 'portfolio') {
+                    return enablePortfolioFeature.value;
+                }
+                return true;
+            });
+        });
+
         // Initialize theme from localStorage or system preference
-        onMounted(() => {
+        onMounted(async () => {
             const savedTheme = localStorage.getItem('theme');
             if (savedTheme) {
                 currentTheme.value = savedTheme;
@@ -27,6 +50,27 @@ export default {
                 currentTheme.value = 'dark';
             }
             applyTheme(currentTheme.value);
+
+            // Fetch feature flags from backend
+            try {
+                const response = await axios.get('/api/v1/system/config');
+                if (response.data && response.data.items) {
+                    const portfolioItem = response.data.items.find(
+                        item => item.key === 'ENABLE_PORTFOLIO_FEATURE'
+                    );
+                    if (portfolioItem) {
+                        // Use value if present, otherwise use schema default or true
+                        const rawValue = portfolioItem.value;
+                        if (rawValue !== undefined && rawValue !== '') {
+                            enablePortfolioFeature.value = rawValue === 'true';
+                        } else if (portfolioItem.schema && portfolioItem.schema.default_value) {
+                            enablePortfolioFeature.value = portfolioItem.schema.default_value === 'true';
+                        }
+                    }
+                }
+            } catch (error) {
+                console.warn('Failed to fetch feature flags:', error);
+            }
         });
 
         // Apply theme to document
@@ -55,15 +99,6 @@ export default {
         const getThemeLabel = () => {
             return currentTheme.value === 'light' ? '暗黑' : '浅色';
         };
-
-        const navItems = [
-            { path: '/', name: 'Overview', label: '概览', icon: 'bi-grid' },
-            { path: '/chat', name: 'Chat', label: 'Agent对话', icon: 'bi-chat-dots' },
-            { path: '/watchlist', name: 'Watchlist', label: '自选/持仓', icon: 'bi-view-list' },
-            { path: '/portfolio', name: 'Portfolio', label: '投资组合', icon: 'bi-wallet2' },
-            { path: '/tasks', name: 'Tasks', label: '任务中心', icon: 'bi-activity' },
-            { path: '/settings', name: 'Settings', label: '设置', icon: 'bi-gear' },
-        ];
 
         const isActive = (path) => {
             return route.path === path;

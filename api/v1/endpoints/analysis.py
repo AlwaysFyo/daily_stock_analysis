@@ -21,31 +21,34 @@ import json
 import logging
 import re
 from datetime import datetime
-from typing import Optional, Union, Dict, Any
+from typing import Any, Dict, List, Optional, Union
 
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from api.deps import get_config_dep
 from api.v1.schemas.analysis import (
-    AnalyzeRequest,
     AnalysisResultResponse,
-    TaskAccepted,
-    BatchTaskAcceptedResponse,
-    BatchTaskAcceptedItem,
+    AnalyzeRequest,
     BatchDuplicateTaskItem,
-    TaskStatus,
+    BatchRerunRequest,
+    BatchRerunResponse,
+    BatchRerunScope,
+    BatchTaskAcceptedItem,
+    BatchTaskAcceptedResponse,
+    DuplicateTaskErrorResponse,
+    TaskAccepted,
     TaskInfo,
     TaskListResponse,
-    DuplicateTaskErrorResponse,
+    TaskStatus,
 )
 from api.v1.schemas.common import ErrorResponse
 from api.v1.schemas.history import (
     AnalysisReport,
-    ReportMeta,
-    ReportSummary,
-    ReportStrategy,
     ReportDetails,
+    ReportMeta,
+    ReportStrategy,
+    ReportSummary,
 )
 from data_provider.base import canonical_stock_code, normalize_stock_code
 from src.config import Config
@@ -53,15 +56,17 @@ from src.report_language import get_localized_stock_name, normalize_report_langu
 from src.services.name_to_code_resolver import resolve_name_to_code
 from src.services.stock_code_utils import is_code_like
 from src.services.task_queue import (
-    get_task_queue,
     DuplicateTaskError,
+    get_task_queue,
+)
+from src.services.task_queue import (
     TaskStatus as TaskStatusEnum,
 )
 from src.utils.data_processing import (
+    extract_board_detail_fields,
+    extract_fundamental_detail_fields,
     normalize_model_used,
     parse_json_field,
-    extract_fundamental_detail_fields,
-    extract_board_detail_fields,
 )
 
 logger = logging.getLogger(__name__)
@@ -123,6 +128,7 @@ def _resolve_and_normalize_input(raw_value: str) -> str:
 # POST /analyze - 触发股票分析
 # ============================================================
 
+
 @router.post(
     "/analyze",
     response_model=AnalysisResultResponse,
@@ -133,34 +139,36 @@ def _resolve_and_normalize_input(raw_value: str) -> str:
             "model": Union[TaskAccepted, BatchTaskAcceptedResponse],
         },
         400: {"description": "请求参数错误", "model": ErrorResponse},
-        409: {"description": "股票正在分析中，拒绝重复提交", "model": DuplicateTaskErrorResponse},
+        409: {
+            "description": "股票正在分析中，拒绝重复提交",
+            "model": DuplicateTaskErrorResponse,
+        },
         500: {"description": "分析失败", "model": ErrorResponse},
     },
     summary="触发股票分析",
-    description="启动 AI 智能分析任务，支持同步和异步模式。异步模式下相同股票代码不允许重复提交。"
+    description="启动 AI 智能分析任务，支持同步和异步模式。异步模式下相同股票代码不允许重复提交。",
 )
 def trigger_analysis(
-        request: AnalyzeRequest,
-        config: Config = Depends(get_config_dep)
+    request: AnalyzeRequest, config: Config = Depends(get_config_dep)
 ) -> Union[AnalysisResultResponse, JSONResponse]:
     """
     触发股票分析
-    
+
     启动 AI 智能分析任务，支持单只或多只股票批量分析
-    
+
     流程：
     1. 校验请求参数
     2. 异步模式：检查重复 -> 提交任务队列 -> 返回 202
     3. 同步模式：直接执行分析 -> 返回 200
-    
+
     Args:
         request: 分析请求参数
         config: 配置依赖
-        
+
     Returns:
         AnalysisResultResponse: 分析结果（同步模式）
         TaskAccepted | BatchTaskAcceptedResponse: 任务已接受（异步模式，返回 202）
-        
+
     Raises:
         HTTPException: 400 - 请求参数错误
         HTTPException: 409 - 股票正在分析中
@@ -178,13 +186,13 @@ def trigger_analysis(
             status_code=400,
             detail={
                 "error": "validation_error",
-                "message": "必须提供 stock_code 或 stock_codes 参数"
-            }
+                "message": "必须提供 stock_code 或 stock_codes 参数",
+            },
         )
 
     # Normalize and de-duplicate inputs while preserving compatibility.
     resolved = [_resolve_and_normalize_input(c) for c in stock_codes]
-    
+
     seen = set()
     unique_codes = []
     for code in resolved:
@@ -195,7 +203,7 @@ def trigger_analysis(
         if norm not in seen:
             seen.add(norm)
             unique_codes.append(code)
-    
+
     stock_codes = unique_codes
 
     # Limit the number of stocks in a single request to prevent DoS
@@ -205,8 +213,8 @@ def trigger_analysis(
             status_code=400,
             detail={
                 "error": "validation_error",
-                "message": f"单次分析请求最多支持 {MAX_BATCH_SIZE} 只股票"
-            }
+                "message": f"单次分析请求最多支持 {MAX_BATCH_SIZE} 只股票",
+            },
         )
 
     if not stock_codes:
@@ -214,8 +222,8 @@ def trigger_analysis(
             status_code=400,
             detail={
                 "error": "validation_error",
-                "message": "股票代码不能为空或仅包含空白字符"
-            }
+                "message": "股票代码不能为空或仅包含空白字符",
+            },
         )
 
     # Sync mode only supports single-stock analysis.
@@ -225,8 +233,8 @@ def trigger_analysis(
                 status_code=400,
                 detail={
                     "error": "validation_error",
-                    "message": "同步模式仅支持单只股票分析，请使用 async_mode=true 进行批量分析"
-                }
+                    "message": "同步模式仅支持单只股票分析，请使用 async_mode=true 进行批量分析",
+                },
             )
         return _handle_sync_analysis(stock_codes[0], request)
 
@@ -235,14 +243,13 @@ def trigger_analysis(
 
 
 def _handle_async_analysis_batch(
-    stock_codes: list,
-    request: AnalyzeRequest
+    stock_codes: list, request: AnalyzeRequest
 ) -> JSONResponse:
     """
     Handle asynchronous analysis requests, including batch submission.
     """
     task_queue = get_task_queue()
-    
+
     # Preserve metadata for single-stock requests. For batch requests,
     # only carry through metadata that semantically applies to the whole
     # batch, such as import/image source tracking.
@@ -250,8 +257,12 @@ def _handle_async_analysis_batch(
     preserve_batch_metadata = request.selection_source in {"import", "image"}
 
     stock_name = request.stock_name if is_single else None
-    original_query = request.original_query if (is_single or preserve_batch_metadata) else None
-    selection_source = request.selection_source if (is_single or preserve_batch_metadata) else None
+    original_query = (
+        request.original_query if (is_single or preserve_batch_metadata) else None
+    )
+    selection_source = (
+        request.selection_source if (is_single or preserve_batch_metadata) else None
+    )
     notify = getattr(request, "notify", True)
 
     submit_kwargs = dict(
@@ -283,7 +294,7 @@ def _handle_async_analysis_batch(
         )
         for dup in duplicate_errors
     ]
-    
+
     # 单只股票且被拒绝：保持 409 兼容性
     if len(stock_codes) == 1 and duplicates:
         dup = duplicates[0]
@@ -293,11 +304,8 @@ def _handle_async_analysis_batch(
             stock_code=dup.stock_code,
             existing_task_id=dup.existing_task_id,
         )
-        return JSONResponse(
-            status_code=409,
-            content=error_response.model_dump()
-        )
-    
+        return JSONResponse(status_code=409, content=error_response.model_dump())
+
     # 单只股票成功：保持原有响应格式兼容性
     if len(stock_codes) == 1 and accepted:
         task_accepted = TaskAccepted(
@@ -305,37 +313,31 @@ def _handle_async_analysis_batch(
             status="pending",
             message=accepted[0].message,
         )
-        return JSONResponse(
-            status_code=202,
-            content=task_accepted.model_dump()
-        )
-    
+        return JSONResponse(status_code=202, content=task_accepted.model_dump())
+
     # 批量：返回汇总结果
     batch_response = BatchTaskAcceptedResponse(
         accepted=accepted,
         duplicates=duplicates,
         message=f"已提交 {len(accepted)} 个任务，{len(duplicates)} 个重复跳过",
     )
-    return JSONResponse(
-        status_code=202,
-        content=batch_response.model_dump()
-    )
+    return JSONResponse(status_code=202, content=batch_response.model_dump())
 
 
 def _handle_sync_analysis(
-    stock_code: str,
-    request: AnalyzeRequest
+    stock_code: str, request: AnalyzeRequest
 ) -> AnalysisResultResponse:
     """
     处理同步分析请求
-    
+
     直接执行分析，等待完成后返回结果
     """
     import uuid
+
     from src.services.analysis_service import AnalysisService
-    
+
     query_id = uuid.uuid4().hex
-    
+
     try:
         service = AnalysisService()
         result = service.analyze_stock(
@@ -351,8 +353,8 @@ def _handle_sync_analysis(
                 status_code=500,
                 detail={
                     "error": "analysis_failed",
-                    "message": f"分析股票 {stock_code} 失败"
-                }
+                    "message": f"分析股票 {stock_code} 失败",
+                },
             )
 
         # 构建报告结构
@@ -375,7 +377,7 @@ def _handle_sync_analysis(
             stock_code=result.get("stock_code", stock_code),
             stock_name=result.get("stock_name"),
             report=report.model_dump() if report else None,
-            created_at=datetime.now().isoformat()
+            created_at=datetime.now().isoformat(),
         )
 
     except HTTPException:
@@ -386,14 +388,15 @@ def _handle_sync_analysis(
             status_code=500,
             detail={
                 "error": "internal_error",
-                "message": f"分析过程发生错误: {str(e)}"
-            }
+                "message": f"分析过程发生错误: {str(e)}",
+            },
         )
 
 
 # ============================================================
 # GET /tasks - 获取任务列表
 # ============================================================
+
 
 @router.get(
     "/tasks",
@@ -402,58 +405,77 @@ def _handle_sync_analysis(
         200: {"description": "任务列表"},
     },
     summary="获取分析任务列表",
-    description="获取当前所有分析任务，可按状态筛选"
+    description="获取当前所有分析任务，可按状态筛选",
 )
 def get_task_list(
     status: Optional[str] = Query(
         None,
-        description="筛选状态：pending, processing, completed, failed（支持逗号分隔多个）"
+        description="筛选状态：pending, processing, completed, failed（支持逗号分隔多个）",
     ),
     limit: int = Query(20, description="返回数量限制", ge=1, le=100),
+    include_history: bool = Query(True, description="是否包含数据库中的历史任务记录"),
 ) -> TaskListResponse:
     """
     获取分析任务列表
-    
+
     Args:
         status: 状态筛选（可选）
         limit: 返回数量限制
-        
+        include_history: 是否包含历史任务
+
     Returns:
         TaskListResponse: 任务列表响应
     """
     task_queue = get_task_queue()
-    
-    # 获取所有任务
+
+    # 获取内存中的所有任务
     all_tasks = task_queue.list_all_tasks(limit=limit)
-    
+
+    # 如果需要，从数据库加载历史任务
+    if include_history:
+        historical_tasks = task_queue.get_historical_tasks(limit=limit)
+
+        # 合并任务，避免重复（内存中的任务优先）
+        existing_ids = {t.task_id for t in all_tasks}
+        for hist_task in historical_tasks:
+            if hist_task.get("task_id") not in existing_ids:
+                # 将字典转换为类似 TaskInfo 的对象
+                all_tasks.append(_HistoricalTaskWrapper(hist_task))
+
     # 状态筛选
     if status:
         status_list = [s.strip().lower() for s in status.split(",")]
         all_tasks = [t for t in all_tasks if t.status.value in status_list]
-    
+
     # 统计信息
     stats = task_queue.get_task_stats()
-    
+
     # 转换为 Schema
     task_infos = [
         TaskInfo(
             task_id=t.task_id,
             stock_code=t.stock_code,
             stock_name=t.stock_name,
-            status=t.status.value,
+            status=t.status.value if hasattr(t.status, "value") else t.status,
             progress=t.progress,
             message=t.message,
             report_type=t.report_type,
-            created_at=t.created_at.isoformat(),
-            started_at=t.started_at.isoformat() if t.started_at else None,
-            completed_at=t.completed_at.isoformat() if t.completed_at else None,
+            created_at=t.created_at.isoformat()
+            if hasattr(t.created_at, "isoformat")
+            else t.created_at,
+            started_at=t.started_at.isoformat()
+            if t.started_at and hasattr(t.started_at, "isoformat")
+            else t.started_at,
+            completed_at=t.completed_at.isoformat()
+            if t.completed_at and hasattr(t.completed_at, "isoformat")
+            else t.completed_at,
             error=t.error,
-            original_query=t.original_query,
-            selection_source=t.selection_source,
+            original_query=getattr(t, "original_query", None),
+            selection_source=getattr(t, "selection_source", None),
         )
         for t in all_tasks
     ]
-    
+
     return TaskListResponse(
         total=stats["total"],
         pending=stats["pending"],
@@ -462,9 +484,47 @@ def get_task_list(
     )
 
 
+class _HistoricalTaskWrapper:
+    """Wrapper for historical task dict to behave like TaskInfo object."""
+
+    def __init__(self, data: Dict[str, Any]):
+        self._data = data
+        self.task_id = data.get("task_id", "")
+        self.stock_code = data.get("stock_code", "")
+        self.stock_name = data.get("stock_name")
+        self.status = _StatusWrapper(data.get("status", "completed"))
+        self.progress = data.get("progress", 100)
+        self.message = data.get("message", "")
+        self.report_type = data.get("report_type", "detailed")
+        self.created_at = _parse_datetime(data.get("created_at")) or datetime.now()
+        self.started_at = _parse_datetime(data.get("started_at"))
+        self.completed_at = _parse_datetime(data.get("completed_at"))
+        self.error = data.get("error")
+        self.original_query = None
+        self.selection_source = None
+
+
+class _StatusWrapper:
+    """Wrapper for status string to have .value attribute."""
+
+    def __init__(self, value: str):
+        self.value = value
+
+
+def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
+    """Parse ISO format datetime string."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except (ValueError, TypeError):
+        return None
+
+
 # ============================================================
 # GET /tasks/stream - SSE 实时推送
 # ============================================================
+
 
 @router.get(
     "/tasks/stream",
@@ -472,12 +532,12 @@ def get_task_list(
         200: {"description": "SSE 事件流", "content": {"text/event-stream": {}}},
     },
     summary="任务状态 SSE 流",
-    description="通过 Server-Sent Events 实时推送任务状态变化"
+    description="通过 Server-Sent Events 实时推送任务状态变化",
 )
 async def task_stream():
     """
     SSE 任务状态流
-    
+
     事件类型：
     - connected: 连接成功
     - task_created: 新任务创建
@@ -485,25 +545,26 @@ async def task_stream():
     - task_completed: 任务完成
     - task_failed: 任务失败
     - heartbeat: 心跳（每 30 秒）
-    
+
     Returns:
         StreamingResponse: SSE 事件流
     """
+
     async def event_generator():
         task_queue = get_task_queue()
         event_queue: asyncio.Queue = asyncio.Queue()
-        
+
         # 发送连接成功事件
         yield _format_sse_event("connected", {"message": "Connected to task stream"})
-        
+
         # 发送当前进行中的任务
         pending_tasks = task_queue.list_pending_tasks()
         for task in pending_tasks:
             yield _format_sse_event("task_created", task.to_dict())
-        
+
         # 订阅任务事件
         task_queue.subscribe(event_queue)
-        
+
         try:
             while True:
                 try:
@@ -512,15 +573,15 @@ async def task_stream():
                     yield _format_sse_event(event["type"], event["data"])
                 except asyncio.TimeoutError:
                     # 心跳
-                    yield _format_sse_event("heartbeat", {
-                        "timestamp": datetime.now().isoformat()
-                    })
+                    yield _format_sse_event(
+                        "heartbeat", {"timestamp": datetime.now().isoformat()}
+                    )
         except asyncio.CancelledError:
             # 客户端断开连接
             pass
         finally:
             task_queue.unsubscribe(event_queue)
-    
+
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
@@ -528,18 +589,18 @@ async def task_stream():
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",  # 禁用 Nginx 缓冲
-        }
+        },
     )
 
 
 def _format_sse_event(event_type: str, data: Dict[str, Any]) -> str:
     """
     格式化 SSE 事件
-    
+
     Args:
         event_type: 事件类型
         data: 事件数据
-        
+
     Returns:
         SSE 格式字符串
     """
@@ -550,6 +611,7 @@ def _format_sse_event(event_type: str, data: Dict[str, Any]) -> str:
 # GET /status/{task_id} - 查询单个任务状态
 # ============================================================
 
+
 @router.get(
     "/status/{task_id}",
     response_model=TaskStatus,
@@ -558,27 +620,27 @@ def _format_sse_event(event_type: str, data: Dict[str, Any]) -> str:
         404: {"description": "任务不存在", "model": ErrorResponse},
     },
     summary="查询分析任务状态",
-    description="根据 task_id 查询单个任务的状态"
+    description="根据 task_id 查询单个任务的状态",
 )
 def get_analysis_status(task_id: str) -> TaskStatus:
     """
     查询分析任务状态
-    
+
     优先从任务队列查询，如果不存在则从数据库查询历史记录
-    
+
     Args:
         task_id: 任务 ID
-        
+
     Returns:
         TaskStatus: 任务状态信息
-        
+
     Raises:
         HTTPException: 404 - 任务不存在
     """
     # 1. 先从任务队列查询
     task_queue = get_task_queue()
     task = task_queue.get_task(task_id)
-    
+
     if task:
         return TaskStatus(
             task_id=task.task_id,
@@ -590,10 +652,11 @@ def get_analysis_status(task_id: str) -> TaskStatus:
             original_query=task.original_query,
             selection_source=task.selection_source,
         )
-    
+
     # 2. 从数据库查询已完成的记录
     try:
         from src.storage import DatabaseManager
+
         db = DatabaseManager.get_instance()
         records = db.get_analysis_history(query_id=task_id, limit=1)
 
@@ -601,12 +664,18 @@ def get_analysis_status(task_id: str) -> TaskStatus:
             record = records[0]
             raw_result = parse_json_field(record.raw_result)
             model_used = normalize_model_used(
-                (raw_result or {}).get("model_used") if isinstance(raw_result, dict) else None
+                (raw_result or {}).get("model_used")
+                if isinstance(raw_result, dict)
+                else None
             )
             report_language = normalize_report_language(
-                (raw_result or {}).get("report_language") if isinstance(raw_result, dict) else None
+                (raw_result or {}).get("report_language")
+                if isinstance(raw_result, dict)
+                else None
             )
-            stock_name = get_localized_stock_name(record.name, record.code, report_language)
+            stock_name = get_localized_stock_name(
+                record.name, record.code, report_language
+            )
             # Build report from DB record so completed tasks return real data
             report_dict = AnalysisReport(
                 meta=ReportMeta(
@@ -614,9 +683,11 @@ def get_analysis_status(task_id: str) -> TaskStatus:
                     query_id=task_id,
                     stock_code=record.code,
                     stock_name=stock_name,
-                    report_type=getattr(record, 'report_type', None),
+                    report_type=getattr(record, "report_type", None),
                     report_language=report_language,
-                    created_at=record.created_at.isoformat() if record.created_at else None,
+                    created_at=record.created_at.isoformat()
+                    if record.created_at
+                    else None,
                     model_used=model_used,
                 ),
                 summary=ReportSummary(
@@ -626,10 +697,18 @@ def get_analysis_status(task_id: str) -> TaskStatus:
                     analysis_summary=record.analysis_summary,
                 ),
                 strategy=ReportStrategy(
-                    ideal_buy=str(getattr(record, 'ideal_buy', None)) if getattr(record, 'ideal_buy', None) is not None else None,
-                    secondary_buy=str(getattr(record, 'secondary_buy', None)) if getattr(record, 'secondary_buy', None) is not None else None,
-                    stop_loss=str(getattr(record, 'stop_loss', None)) if getattr(record, 'stop_loss', None) is not None else None,
-                    take_profit=str(getattr(record, 'take_profit', None)) if getattr(record, 'take_profit', None) is not None else None,
+                    ideal_buy=str(getattr(record, "ideal_buy", None))
+                    if getattr(record, "ideal_buy", None) is not None
+                    else None,
+                    secondary_buy=str(getattr(record, "secondary_buy", None))
+                    if getattr(record, "secondary_buy", None) is not None
+                    else None,
+                    stop_loss=str(getattr(record, "stop_loss", None))
+                    if getattr(record, "stop_loss", None) is not None
+                    else None,
+                    take_profit=str(getattr(record, "take_profit", None))
+                    if getattr(record, "take_profit", None) is not None
+                    else None,
                 ),
             ).model_dump()
             return TaskStatus(
@@ -641,9 +720,11 @@ def get_analysis_status(task_id: str) -> TaskStatus:
                     stock_code=record.code,
                     stock_name=stock_name,
                     report=report_dict,
-                    created_at=record.created_at.isoformat() if record.created_at else datetime.now().isoformat()
+                    created_at=record.created_at.isoformat()
+                    if record.created_at
+                    else datetime.now().isoformat(),
                 ),
-                error=None
+                error=None,
             )
 
     except Exception as e:
@@ -652,23 +733,21 @@ def get_analysis_status(task_id: str) -> TaskStatus:
             status_code=500,
             detail={
                 "error": "internal_error",
-                "message": f"查询任务状态失败: {str(e)}"
-            }
+                "message": f"查询任务状态失败: {str(e)}",
+            },
         )
 
     # 3. 任务不存在
     raise HTTPException(
         status_code=404,
-        detail={
-            "error": "not_found",
-            "message": f"任务 {task_id} 不存在或已过期"
-        }
+        detail={"error": "not_found", "message": f"任务 {task_id} 不存在或已过期"},
     )
 
 
 # ============================================================
 # 辅助函数
 # ============================================================
+
 
 def _load_sync_fundamental_sources(
     query_id: str,
@@ -684,7 +763,9 @@ def _load_sync_fundamental_sources(
         records = db.get_analysis_history(query_id=query_id, code=stock_code, limit=1)
         context_snapshot = None
         if records:
-            context_snapshot = parse_json_field(getattr(records[0], "context_snapshot", None))
+            context_snapshot = parse_json_field(
+                getattr(records[0], "context_snapshot", None)
+            )
 
         fallback_fundamental = db.get_latest_fundamental_snapshot(
             query_id=query_id,
@@ -702,16 +783,16 @@ def _load_sync_fundamental_sources(
 
 
 def _build_analysis_report(
-        report_data: Dict[str, Any],
-        query_id: str,
-        stock_code: str,
-        stock_name: Optional[str] = None,
-        context_snapshot: Optional[Any] = None,
-        fallback_fundamental_payload: Optional[Dict[str, Any]] = None,
+    report_data: Dict[str, Any],
+    query_id: str,
+    stock_code: str,
+    stock_name: Optional[str] = None,
+    context_snapshot: Optional[Any] = None,
+    fallback_fundamental_payload: Optional[Dict[str, Any]] = None,
 ) -> AnalysisReport:
     """
     构建符合 API 规范的分析报告
-    
+
     Args:
         report_data: 原始报告数据
         query_id: 查询 ID
@@ -719,7 +800,7 @@ def _build_analysis_report(
         stock_name: 股票名称
         context_snapshot: 上下文快照（可选）
         fallback_fundamental_payload: 基本面快照 payload（可选）
-        
+
     Returns:
         AnalysisReport: 结构化的分析报告
     """
@@ -755,7 +836,7 @@ def _build_analysis_report(
         operation_advice=summary_data.get("operation_advice"),
         trend_prediction=summary_data.get("trend_prediction"),
         sentiment_score=summary_data.get("sentiment_score"),
-        sentiment_label=summary_data.get("sentiment_label")
+        sentiment_label=summary_data.get("sentiment_label"),
     )
 
     strategy = None
@@ -764,7 +845,7 @@ def _build_analysis_report(
             ideal_buy=strategy_data.get("ideal_buy"),
             secondary_buy=strategy_data.get("secondary_buy"),
             stop_loss=strategy_data.get("stop_loss"),
-            take_profit=strategy_data.get("take_profit")
+            take_profit=strategy_data.get("take_profit"),
         )
 
     extracted_fundamental = extract_fundamental_detail_fields(
@@ -776,10 +857,19 @@ def _build_analysis_report(
         fallback_fundamental_payload=fallback_fundamental_payload,
     )
     details = None
-    has_board_details = bool(extracted_boards.get("belong_boards")) or extracted_boards.get("sector_rankings") is not None
-    if details_data or any(extracted_fundamental.values()) or has_board_details or context_snapshot is not None:
+    has_board_details = (
+        bool(extracted_boards.get("belong_boards"))
+        or extracted_boards.get("sector_rankings") is not None
+    )
+    if (
+        details_data
+        or any(extracted_fundamental.values())
+        or has_board_details
+        or context_snapshot is not None
+    ):
         details = ReportDetails(
-            news_content=details_data.get("news_summary") or details_data.get("news_content"),
+            news_content=details_data.get("news_summary")
+            or details_data.get("news_content"),
             raw_result=details_data,
             context_snapshot=context_snapshot,
             financial_report=extracted_fundamental.get("financial_report"),
@@ -789,8 +879,214 @@ def _build_analysis_report(
         )
 
     return AnalysisReport(
-        meta=meta,
-        summary=summary,
-        strategy=strategy,
-        details=details
+        meta=meta, summary=summary, strategy=strategy, details=details
     )
+
+
+# ============================================================
+# POST /batch-rerun - 批量重跑分析
+# ============================================================
+
+
+@router.post(
+    "/batch-rerun",
+    response_model=BatchRerunResponse,
+    responses={
+        200: {"description": "批量任务已提交", "model": BatchRerunResponse},
+        400: {"description": "请求参数错误", "model": ErrorResponse},
+        500: {"description": "服务器错误", "model": ErrorResponse},
+    },
+    summary="批量重跑分析",
+    description="一键重跑全量/自选/持仓股票的分析任务。支持三种范围：all(全量)、watchlist(自选)、holdings(持仓)。",
+)
+def batch_rerun_analysis(
+    request: BatchRerunRequest, config: Config = Depends(get_config_dep)
+) -> BatchRerunResponse:
+    """
+    批量重跑分析
+
+    根据指定范围获取股票列表，批量提交分析任务
+
+    Args:
+        request: 批量重跑请求参数
+        config: 配置依赖
+
+    Returns:
+        BatchRerunResponse: 批量任务提交结果
+
+    Raises:
+        HTTPException: 400 - 请求参数错误
+        HTTPException: 500 - 服务器错误
+    """
+    from sqlalchemy import select
+
+    from src.storage import DatabaseManager, StockInfo
+
+    stock_codes = []
+    scope_name = ""
+
+    try:
+        if request.scope == BatchRerunScope.ALL:
+            scope_name = "全量"
+            all_codes = _get_all_stock_codes(config)
+            stock_codes = all_codes
+        elif request.scope == BatchRerunScope.WATCHLIST:
+            scope_name = "自选"
+            stock_codes = _get_stocks_by_status("watchlist")
+        elif request.scope == BatchRerunScope.HOLDINGS:
+            scope_name = "持仓"
+            stock_codes = _get_stocks_by_status("holding")
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "validation_error",
+                    "message": f"无效的 scope 参数: {request.scope}",
+                },
+            )
+
+        if not stock_codes:
+            return BatchRerunResponse(
+                scope=request.scope.value,
+                total_stocks=0,
+                accepted=[],
+                duplicates=[],
+                message=f"没有需要分析的{scope_name}股票",
+            )
+
+        task_queue = get_task_queue()
+
+        accepted_tasks, duplicate_errors = task_queue.submit_tasks_batch(
+            stock_codes=stock_codes,
+            report_type=request.report_type,
+            force_refresh=request.force_refresh,
+            notify=request.notify,
+            selection_source="batch_rerun",
+        )
+
+        accepted = [
+            BatchTaskAcceptedItem(
+                task_id=task.task_id,
+                stock_code=task.stock_code,
+                status="pending",
+                message=f"分析任务已加入队列: {task.stock_code}",
+            )
+            for task in accepted_tasks
+        ]
+
+        duplicates = [
+            BatchDuplicateTaskItem(
+                stock_code=dup.stock_code,
+                existing_task_id=dup.existing_task_id,
+                message=str(dup),
+            )
+            for dup in duplicate_errors
+        ]
+
+        message = f"已提交 {len(accepted)} 个{scope_name}任务"
+        if duplicates:
+            message += f"，{len(duplicates)} 个重复跳过"
+
+        logger.info(
+            f"[BatchRerun] scope={request.scope.value}, total={len(stock_codes)}, "
+            f"accepted={len(accepted)}, duplicates={len(duplicates)}"
+        )
+
+        return BatchRerunResponse(
+            scope=request.scope.value,
+            total_stocks=len(stock_codes),
+            accepted=accepted,
+            duplicates=duplicates,
+            message=message,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"批量重跑分析失败: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "internal_error",
+                "message": f"批量重跑分析失败: {str(e)}",
+            },
+        )
+
+
+def _get_all_stock_codes(config: Config) -> List[str]:
+    """
+    获取全量股票代码列表
+
+    合并自选股、持仓股和配置文件中的股票列表
+
+    Args:
+        config: 配置对象
+
+    Returns:
+        去重后的股票代码列表
+    """
+    from sqlalchemy import select
+
+    from data_provider.base import canonical_stock_code
+    from src.storage import DatabaseManager, StockInfo
+
+    codes_set = set()
+
+    db = DatabaseManager.get_instance()
+    try:
+        with db.get_session() as session:
+            stocks = session.execute(select(StockInfo)).scalars().all()
+
+            for stock in stocks:
+                if stock.code:
+                    normalized = canonical_stock_code(stock.code)
+                    if normalized:
+                        codes_set.add(normalized)
+    except Exception as e:
+        logger.warning(f"从数据库获取股票列表失败: {e}")
+
+    config_stock_list = getattr(config, "stock_list", []) or []
+    for code in config_stock_list:
+        normalized = canonical_stock_code(code)
+        if normalized:
+            codes_set.add(normalized)
+
+    return list(codes_set)
+
+
+def _get_stocks_by_status(status: str) -> List[str]:
+    """
+    按状态获取股票代码列表
+
+    Args:
+        status: 股票状态 (watchlist/holding)
+
+    Returns:
+        股票代码列表
+    """
+    from sqlalchemy import select
+
+    from data_provider.base import canonical_stock_code
+    from src.storage import DatabaseManager, StockInfo
+
+    codes = []
+    db = DatabaseManager.get_instance()
+
+    try:
+        with db.get_session() as session:
+            stocks = (
+                session.execute(select(StockInfo).where(StockInfo.status == status))
+                .scalars()
+                .all()
+            )
+
+            for stock in stocks:
+                if stock.code:
+                    normalized = canonical_stock_code(stock.code)
+                    if normalized:
+                        codes.append(normalized)
+    except Exception as e:
+        logger.error(f"获取{status}股票列表失败: {e}", exc_info=True)
+        raise
+
+    return codes

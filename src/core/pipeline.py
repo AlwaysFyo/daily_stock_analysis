@@ -1090,6 +1090,7 @@ class StockAnalysisPipeline:
         single_stock_notify: bool = False,
         report_type: ReportType = ReportType.SIMPLE,
         analysis_query_id: Optional[str] = None,
+        progress_callback: Optional[callable] = None,
     ) -> Optional[AnalysisResult]:
         """
         处理单只股票的完整流程
@@ -1108,19 +1109,30 @@ class StockAnalysisPipeline:
             skip_analysis: 是否跳过 AI 分析
             single_stock_notify: 是否启用单股推送模式（每分析完一只立即推送）
             report_type: 报告类型枚举（从配置读取，Issue #119）
+            progress_callback: 进度回调函数 (progress: int, message: str) -> None
 
         Returns:
             AnalysisResult 或 None
         """
         logger.info(f"========== 开始处理 {code} ==========")
         
+        def update_progress(progress: int, message: str):
+            if progress_callback:
+                try:
+                    progress_callback(progress, message)
+                except Exception as e:
+                    logger.warning(f"进度回调失败: {e}")
+        
         try:
-            # Step 1: 获取并保存数据
+            # Step 1: 获取并保存数据 (10% -> 30%)
+            update_progress(10, "正在获取股票数据...")
             success, error = self.fetch_and_save_stock_data(code)
             
             if not success:
                 logger.warning(f"[{code}] 数据获取失败: {error}")
                 # 即使获取失败，也尝试用已有数据分析
+            
+            update_progress(30, "数据获取完成，开始分析...")
             
             # Step 2: AI 分析
             if skip_analysis:
@@ -1128,7 +1140,11 @@ class StockAnalysisPipeline:
                 return None
             
             effective_query_id = analysis_query_id or self.query_id or uuid.uuid4().hex
+            
+            update_progress(40, "正在进行 AI 分析...")
             result = self.analyze_stock(code, report_type, query_id=effective_query_id)
+            
+            update_progress(80, "AI 分析完成，生成报告...")
             
             if result:
                 if not result.success:
@@ -1144,6 +1160,7 @@ class StockAnalysisPipeline:
                 # 单股推送模式（#55）：每分析完一只股票立即推送
                 if single_stock_notify and self.notifier.is_available():
                     try:
+                        update_progress(90, "正在发送通知...")
                         # 根据报告类型选择生成方法
                         if report_type == ReportType.FULL:
                             report_content = self.notifier.generate_dashboard_report([result])

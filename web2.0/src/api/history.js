@@ -4,6 +4,9 @@
 
 import { endpoints } from './config.js';
 
+// Get axios from global scope (loaded via CDN)
+const axios = window.axios;
+
 /**
  * Convert snake_case to camelCase
  */

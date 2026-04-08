@@ -43,7 +43,8 @@ class AnalysisService:
         report_type: str = "detailed",
         force_refresh: bool = False,
         query_id: Optional[str] = None,
-        send_notification: bool = True
+        send_notification: bool = True,
+        progress_callback: Optional[callable] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         执行股票分析
@@ -54,6 +55,7 @@ class AnalysisService:
             force_refresh: 是否强制刷新
             query_id: 查询 ID（可选）
             send_notification: 是否发送通知（API 触发默认发送）
+            progress_callback: 进度回调函数 (progress: int, message: str) -> None
             
         Returns:
             分析结果字典，包含:
@@ -89,7 +91,8 @@ class AnalysisService:
                 code=stock_code,
                 skip_analysis=False,
                 single_stock_notify=send_notification,
-                report_type=rt
+                report_type=rt,
+                progress_callback=progress_callback,
             )
             
             if result is None:
