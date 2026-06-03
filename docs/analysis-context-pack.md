@@ -99,7 +99,7 @@ P3 在 P2 `AnalysisContextBuilder` 之后接入运行态消费，但消费面限
 
 普通分析 Prompt 的顺序固定为：基础信息 -> #1386 `market_phase_context` 渲染区块 -> `analysis_context_pack_summary` -> 技术面、实时行情、新闻等既有区块。`analysis_context_pack_summary` 只包含 subject、`pack_version`、block `status` / `source` / `warnings` / `missing_reason`、`metadata.news_result_count`、`data_quality.warnings` 和 P5 低敏数据限制，不得输出 `news.content`、`trend_result`、`chip`、`fundamental_context` 等原始 payload。
 
-Agent 路径同样只传 summary。`AgentExecutor._build_user_message()` 在 market phase 段之后、pre-fetched JSON 之前插入 summary；`AgentOrchestrator._build_context()` 只把 summary 放入 `ctx.meta["analysis_context_pack_summary"]`，禁止写入 `ctx.data`；`BaseAgent._build_messages()` 在 market phase user message 之后、`_inject_cached_data()` 之前插入 summary。Agent 首轮没有复用普通分析新闻检索，`news` block 为 `missing` 是当前 P3 的预期状态。
+Agent 路径同样只传 summary。`AgentExecutor._build_user_message()` 在 market phase 段之后、pre-fetched JSON 之前插入 summary；`AgentOrchestrator._build_context()` 只把 summary 放入 `ctx.meta["analysis_context_pack_summary"]`，禁止写入 `ctx.data`；`BaseAgent._build_messages()` 在 market phase user message 之后、`_inject_cached_data()` 之前插入 summary。Agent 路径会在 `_ensure_agent_history()` 预取后读取一次 `storage.get_analysis_context()` 作为 `daily_bars` 的低敏状态来源，读取失败或无可用上下文时才标记 `daily_bars_missing`，该读取 fail-open 且不把日线原始 payload 写入 Agent runtime context。Agent 首轮没有复用普通分析新闻检索，`news` block 为 `missing` 是当前 P3 的预期状态。
 
 P3 当时不持久化完整 pack，不新增 API/Web/Bot/Desktop 字段，不改变报告 JSON schema，不把 summary 写入 `analysis_history.context_snapshot`、task status 或 report metadata；history snapshot 和 diagnostic snapshot 会剥离 `market_phase_context`、`analysis_context_pack`、`analysis_context_pack_summary` 等 runtime prompt key。P4 在此基础上新增低敏 overview，可见性只覆盖历史详情、同步分析响应、completed task status 和 Web 报告页；P5 继续复用 summary 消费路径，不改 LLM 输出 JSON schema。Agent 工具级 pack cache 复用仍是后续工作。
 
@@ -119,7 +119,7 @@ P4 持久化面只在 `analysis_history.context_snapshot` 顶层写入 `analysis
 
 API 返回给 Web 的 `details.context_snapshot` 会通过 `sanitize_context_snapshot_for_api()` 剥离顶层 `analysis_context_pack_overview`，避免 raw snapshot 面板重复展示或被当作完整上下文导出；overview 只从 `extract_analysis_context_pack_overview()` 单独取出。Agent 路径与普通分析路径写入同一 overview 形状，Agent 无新闻计数时 `metadata.news_result_count` 可为空。
 
-P4 Web 展示只在报告详情页渲染 `AnalysisContextSummary`，位置在策略点位和资讯之后、运行诊断之前；该区域默认折叠，折叠头部展示可用数、缺失数、非零的其他状态计数和触发来源，展开后展示数据块状态 badge、来源、warning、missing reason、状态计数和新闻结果数。P5 后折叠头部还会展示质量分/等级，展开后展示 `limitations` 和 `fetch_failed` 状态。无 overview 时不渲染占位。P4/P5 不覆盖 pending/processing TaskPanel 或 SSE 进行中可见性，不改通知摘要、Bot/Desktop 专属展示或 `market_review` overview。
+P4 Web 展示只在报告详情页渲染 `AnalysisContextSummary`，位置在策略点位和资讯之后、运行诊断之前；该区域默认折叠，折叠头部展示可用数、缺失数、非零的其他状态计数和触发来源，展开后展示数据块状态 badge、来源、warning、missing reason、状态计数和新闻结果数。P5 后折叠头部还会展示质量分/等级，展开后展示 `limitations` 和 `fetch_failed` 状态。无 overview 时不渲染占位。在 #1386 P4b 中，Web 会在同一报告详情页展示 `report.meta.market_phase_summary` 阶段标签，并继续复用该低敏数据质量摘要；不扩大完整 pack、Prompt summary、raw payload 或 snapshot 内部字段的公开面。P4/P5 不覆盖 pending/processing TaskPanel 的 AnalysisContextPack 数据质量摘要或 SSE 进行中 overview 可见性，不改通知摘要、Bot/Desktop 专属展示或 `market_review` overview。
 
 ## P5 数据质量评分与 Prompt 数据限制
 
@@ -188,7 +188,7 @@ overview 只扩展现有公开面：`analysis_context_pack_overview.data_quality
 
 Agent 有三层需要分开记录的数据面。`src/core/pipeline.py` 的 Agent 路径会构造 `initial_context`，固定包含 `fundamental_context`，并在可用时加入 `trend_result`，最终作为 Agent 路径的 `context_snapshot` 持久化。`AgentExecutor._build_user_message()` 只适用于 `AGENT_ARCH=single`，首轮消息只显式注入 `realtime_quote`、`chip_distribution`、`news_context` 等已取上下文，不显式注入 `fundamental_context` 或 `trend_result`。`AgentOrchestrator._build_context()` 适用于 `AGENT_ARCH=multi`，可预注入 `realtime_quote`、`daily_history`、`chip_distribution`、`trend_result`、`news_context`，这些进入 `AgentContext` 的字段会作为 pre-fetched data 注入 stage agent 消息；但 orchestrator 不预注入 `fundamental_context`。`trend_result` 不是天然存在，取决于 caller 是否传入。
 
-Agent 工具还会独立调用 `get_realtime_quote`、`get_daily_history`、`get_chip_distribution`、`get_analysis_context`、`get_stock_info` 等工具，容易与普通分析前置获取产生重复请求。P0 只记录这些重复和命名差异，P3 再决定如何让 Agent 复用 pack。
+Agent 工具还会独立调用 `get_realtime_quote`、`get_daily_history`、`get_chip_distribution`、`get_analysis_context`、`get_stock_info` 等工具，容易与普通分析前置获取产生重复请求。当前 pack 生成只在 Agent 历史预取后复用 `storage.get_analysis_context()` 的日线可用性状态，不复用或暴露完整工具级 pack cache；P5 再决定是否做更深的数据质量评分与工具缓存复用。
 
 ### 告警
 

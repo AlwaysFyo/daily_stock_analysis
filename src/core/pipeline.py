@@ -103,6 +103,7 @@ class StockAnalysisPipeline:
         save_context_snapshot: Optional[bool] = None,
         progress_callback: Optional[Callable[[int, str], None]] = None,
         analysis_skills: Optional[List[str]] = None,
+        analysis_phase: str = "auto",
     ):
         """
         初始化调度器
@@ -122,6 +123,7 @@ class StockAnalysisPipeline:
         )
         self.progress_callback = progress_callback
         self.analysis_skills = list(analysis_skills) if analysis_skills is not None else None
+        self.analysis_phase = analysis_phase or "auto"
         
         # 初始化各模块
         self.db = get_db()
@@ -296,7 +298,7 @@ class StockAnalysisPipeline:
                 market=market,
                 current_time=current_time,
                 trigger_source=self.query_source,
-                analysis_intent="auto",
+                analysis_phase=getattr(self, "analysis_phase", "auto"),
             )
             market_phase_context_dict = market_phase_context.to_dict()
             market_phase_summary = render_market_phase_summary(market_phase_context_dict)
@@ -1016,6 +1018,7 @@ class StockAnalysisPipeline:
             # Issue #1066: ensure deep history is in DB before agent tools run
             self._ensure_agent_history(code)
 
+            analysis_context = self._load_agent_analysis_context(code, stock_name)
             market = get_market_for_stock(normalize_stock_code(code))
             (
                 analysis_context_pack_summary,
@@ -1029,6 +1032,7 @@ class StockAnalysisPipeline:
                     initial_context=initial_context,
                     fundamental_context=fundamental_context,
                     query_id=query_id,
+                    base_context=analysis_context,
                 ),
                 report_language=report_language,
                 code=code,
@@ -1192,6 +1196,33 @@ class StockAnalysisPipeline:
             logger.error(f"[{code}] Agent 分析失败: {e}")
             logger.exception(f"[{code}] Agent 详细错误信息:")
             return None
+
+    def _load_agent_analysis_context(self, code: str, stock_name: str) -> Dict[str, Any]:
+        """Load daily-bar context for Agent pack summaries without blocking analysis."""
+        try:
+            context = self.db.get_analysis_context(code)
+        except Exception as exc:
+            logger.warning(
+                "[%s] Agent analysis context load failed; daily_bars will be marked missing: %s",
+                code,
+                exc,
+            )
+            context = None
+
+        if isinstance(context, dict) and context:
+            enriched = dict(context)
+            enriched.setdefault("code", code)
+            if stock_name:
+                enriched.setdefault("stock_name", stock_name)
+            return enriched
+
+        return {
+            "code": code,
+            "stock_name": stock_name,
+            "data_missing": True,
+            "today": {},
+            "yesterday": {},
+        }
 
     def _agent_result_to_analysis_result(
         self,
@@ -1945,19 +1976,31 @@ class StockAnalysisPipeline:
         initial_context: Dict[str, Any],
         fundamental_context: Optional[Dict[str, Any]],
         query_id: str,
+        base_context: Optional[Dict[str, Any]] = None,
     ) -> PipelineAnalysisArtifacts:
-        return PipelineAnalysisArtifacts(
-            code=code,
-            stock_name=stock_name,
-            market=market,
-            phase=phase,
-            base_context={
+        context_candidate = base_context
+        if not isinstance(context_candidate, dict):
+            context_candidate = initial_context.get("analysis_context")
+        if isinstance(context_candidate, dict) and context_candidate:
+            daily_context = dict(context_candidate)
+            daily_context.setdefault("code", code)
+            if stock_name:
+                daily_context.setdefault("stock_name", stock_name)
+        else:
+            daily_context = {
                 "code": code,
                 "stock_name": stock_name,
                 "data_missing": True,
                 "today": {},
                 "yesterday": {},
-            },
+            }
+
+        return PipelineAnalysisArtifacts(
+            code=code,
+            stock_name=stock_name,
+            market=market,
+            phase=phase,
+            base_context=daily_context,
             enhanced_context={},
             realtime_quote=initial_context.get("realtime_quote"),
             trend_result=initial_context.get("trend_result"),
