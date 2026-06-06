@@ -29,6 +29,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query, Body
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from api.deps import get_config_dep
+from api.v1.errors import api_error
 from api.v1.schemas.analysis import (
     AnalyzeRequest,
     AnalysisResultResponse,
@@ -148,25 +149,25 @@ def _run_market_review_background(
             "search_service": search_service,
             "send_notification": send_notification,
             "override_region": override_region,
+            "return_structured": True,
         }
         if query_id:
             review_kwargs["query_id"] = query_id
         report = run_market_review(**review_kwargs)
         if not report:
             raise RuntimeError("大盘复盘未返回可持久化报告")
+        if hasattr(report, "report"):
+            return {
+                "result": report.report,
+                "market_review_payload": getattr(report, "market_review_payload", None),
+            }
         return {"result": report}
     finally:
         _release_market_review_lock(lock_token)
 
 
 def _invalid_analysis_input_error() -> HTTPException:
-    return HTTPException(
-        status_code=400,
-        detail={
-            "error": "validation_error",
-            "message": "请输入有效的股票代码或股票名称",
-        },
-    )
+    return api_error(400, "validation_error", "请输入有效的股票代码或股票名称")
 
 
 def _is_obviously_invalid_analysis_input(text: str) -> bool:
@@ -262,13 +263,7 @@ def trigger_analysis(
         stock_codes.extend(request.stock_codes)
 
     if not stock_codes:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "error": "validation_error",
-                "message": "必须提供 stock_code 或 stock_codes 参数"
-            }
-        )
+        raise api_error(400, "validation_error", "必须提供 stock_code 或 stock_codes 参数")
 
     # Normalize and de-duplicate inputs while preserving compatibility.
     resolved = [_resolve_and_normalize_input(c) for c in stock_codes]
@@ -289,32 +284,18 @@ def trigger_analysis(
     # Limit the number of stocks in a single request to prevent DoS
     MAX_BATCH_SIZE = 50
     if len(stock_codes) > MAX_BATCH_SIZE:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "error": "validation_error",
-                "message": f"单次分析请求最多支持 {MAX_BATCH_SIZE} 只股票"
-            }
-        )
+        raise api_error(400, "validation_error", f"单次分析请求最多支持 {MAX_BATCH_SIZE} 只股票")
 
     if not stock_codes:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "error": "validation_error",
-                "message": "股票代码不能为空或仅包含空白字符"
-            }
-        )
+        raise api_error(400, "validation_error", "股票代码不能为空或仅包含空白字符")
 
     # Sync mode only supports single-stock analysis.
     if not request.async_mode:
         if len(stock_codes) > 1:
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "error": "validation_error",
-                    "message": "同步模式仅支持单只股票分析，请使用 async_mode=true 进行批量分析"
-                }
+            raise api_error(
+                400,
+                "validation_error",
+                "同步模式仅支持单只股票分析，请使用 async_mode=true 进行批量分析",
             )
         return _handle_sync_analysis(stock_codes[0], request)
 
@@ -447,13 +428,7 @@ def _handle_sync_analysis(
 
         if result is None:
             error_message = service.last_error or f"分析股票 {stock_code} 失败"
-            raise HTTPException(
-                status_code=500,
-                detail={
-                    "error": "analysis_failed",
-                    "message": error_message,
-                }
-            )
+            raise api_error(500, "analysis_failed", error_message)
 
         # 构建报告结构
         report_data = result.get("report", {})
@@ -484,13 +459,7 @@ def _handle_sync_analysis(
         raise
     except Exception as e:
         logger.error(f"分析失败: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error": "internal_error",
-                "message": f"分析过程发生错误: {str(e)}"
-            }
-        )
+        raise api_error(500, "internal_error", f"分析过程发生错误: {str(e)}")
 
 
 # ============================================================
@@ -527,13 +496,7 @@ def trigger_market_review(
 
     lock_token = _try_acquire_market_review_lock(config)
     if lock_token is None:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "error": "duplicate_market_review",
-                "message": "大盘复盘正在执行中，请稍后再试",
-            },
-        )
+        raise api_error(409, "duplicate_market_review", "大盘复盘正在执行中，请稍后再试")
 
     try:
         task_id = uuid.uuid4().hex
@@ -849,12 +812,16 @@ def get_analysis_status(task_id: str) -> TaskStatus:
     if task:
         result: Optional[AnalysisResultResponse] = None
         market_review_report = None
+        market_review_payload = None
 
         if task.status == TaskStatusEnum.COMPLETED and isinstance(task.result, dict):
             if task.stock_code == "market_review":
                 report_text = task.result.get("result")
                 if isinstance(report_text, str) and report_text.strip():
                     market_review_report = report_text
+                payload = task.result.get("market_review_payload")
+                if isinstance(payload, dict):
+                    market_review_payload = payload
             else:
                 try:
                     result = _build_task_analysis_result(task)
@@ -871,6 +838,7 @@ def get_analysis_status(task_id: str) -> TaskStatus:
             progress=task.progress,
             result=result,
             market_review_report=market_review_report,
+            market_review_payload=market_review_payload,
             error=task.error,
             stock_name=task.stock_name,
             original_query=task.original_query,
@@ -890,6 +858,12 @@ def get_analysis_status(task_id: str) -> TaskStatus:
             raw_result = parse_json_field(record.raw_result)
             if getattr(record, "report_type", None) == "market_review":
                 market_review_report = None
+                context_snapshot = parse_json_field(getattr(record, "context_snapshot", None))
+                market_review_payload = None
+                if isinstance(context_snapshot, dict):
+                    payload = context_snapshot.get("market_review_payload")
+                    if isinstance(payload, dict):
+                        market_review_payload = payload
                 if isinstance(raw_result, dict):
                     report_text = raw_result.get("raw_response") or raw_result.get("market_review_report")
                     if isinstance(report_text, str) and report_text.strip():
@@ -904,6 +878,7 @@ def get_analysis_status(task_id: str) -> TaskStatus:
                     progress=100,
                     result=None,
                     market_review_report=market_review_report,
+                    market_review_payload=market_review_payload,
                     error=None,
                     stock_name=record.name,
                 )
@@ -1010,22 +985,10 @@ def get_analysis_status(task_id: str) -> TaskStatus:
 
     except Exception as e:
         logger.error(f"查询任务状态失败: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error": "internal_error",
-                "message": f"查询任务状态失败: {str(e)}"
-            }
-        )
+        raise api_error(500, "internal_error", f"查询任务状态失败: {str(e)}")
 
     # 3. 任务不存在
-    raise HTTPException(
-        status_code=404,
-        detail={
-            "error": "not_found",
-            "message": f"任务 {task_id} 不存在或已过期"
-        }
-    )
+    raise api_error(404, "not_found", f"任务 {task_id} 不存在或已过期")
 
 
 # ============================================================
