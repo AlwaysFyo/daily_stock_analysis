@@ -5,8 +5,8 @@ permissions:
   actions: write
 
 on:
-  schedule:
-    - cron: "0 16 * * *" # 北京时间 0 点执行（UTC 16:00）
+  # schedule:
+  #   - cron: "0 16 * * *" # 北京时间 0 点执行（UTC 16:00）
   workflow_dispatch:  # 支持手动触发
 
 jobs:
