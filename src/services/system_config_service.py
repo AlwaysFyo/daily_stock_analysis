@@ -42,6 +42,7 @@ from src.config import (
     parse_env_int,
     resolve_news_window_days,
     resolve_llm_channel_protocol,
+    route_discovered_llm_model,
     setup_env,
 )
 from src.llm.hermes import (
@@ -313,9 +314,15 @@ class SystemConfigService:
     @staticmethod
     def _reload_runtime_singletons() -> None:
         """Reset runtime singleton services after config reload."""
+        from src.agent.factory import reset_tool_registry
         from src.agent.tools.data_tools import reset_fetcher_manager
         from src.search_service import reset_search_service
 
+        # Drop the module-level ToolRegistry so the next
+        # ``build_agent_executor`` / ``build_agent_chat_executor`` call
+        # rebuilds ``_TOOL_REGISTRY`` against the fresh Config and picks up
+        # new ``AGENT_*_TOOL_TIMEOUT_S`` overrides (Issue #1890).
+        reset_tool_registry()
         reset_fetcher_manager()
         reset_search_service()
 
@@ -1167,7 +1174,10 @@ class SystemConfigService:
                 redaction_values=redaction_values,
             )
 
-        models = self._extract_discovered_llm_models(payload)
+        models = [
+            route_discovered_llm_model(model_id, base_url)
+            for model_id in self._extract_discovered_llm_models(payload)
+        ]
         if not models:
             return self._build_llm_channel_result(
                 success=False,
